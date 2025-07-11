@@ -41,11 +41,11 @@ class ProcessedVideoRecorder(
         fun getExportedVideoOutputPath(): String {
             @Suppress("DEPRECATION")
             val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            val exportDir = File(moviesDir, "Exported Videos from Xamera")
+            val exportDir = File(moviesDir, "Exported Videos from UStar")
             if (!exportDir.exists()) {
                 exportDir.mkdirs()
             }
-            return File(exportDir, "XameraVideo_${System.currentTimeMillis()}.mp4").absolutePath
+            return File(exportDir, "UStarVideo_${System.currentTimeMillis()}.mp4").absolutePath
         }
     }
 

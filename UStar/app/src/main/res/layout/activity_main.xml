@@ -70,20 +70,6 @@
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="90dp">
 
-        <!-- Single SwitchCompat for toggling between Digits and Letters.
-             Its left margin is 16dp. -->
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/letterDigitSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Digits"
-            android:checked="true"
-            android:textColor="#FFCB05"
-            app:thumbTint="@color/yellow"
-            app:trackTint="@color/yellow"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp" />
-
         <!-- Horizontal container for Settings and About Buttons -->
         <LinearLayout
             android:id="@+id/settings_about_container"
@@ -152,29 +138,7 @@
             android:text="-"
             android:textColor="@color/darkBlue"
             android:textSize="24sp" />
-
-        <!-- Clear Prediction Button ("C") -->
-        <Button
-            android:id="@+id/clearPredictionButton"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:backgroundTint="@color/red"
-            android:elevation="2dp"
-            android:text="C"
-            android:textColor="@android:color/white"
-            android:textSize="24sp" />
     </LinearLayout>
-
-    <!-- TextView to display the predicted letter -->
-    <TextView
-        android:id="@+id/predictedLetterTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="No Prediction Yet"
-        android:textSize="24sp"
-        android:textColor="@color/yellow"
-        android:layout_gravity="center_horizontal|bottom"
-        android:layout_marginBottom="180dp" />
 
     <!-- Bottom Controls -->
     <LinearLayout
@@ -186,14 +150,14 @@
         android:layout_gravity="center_horizontal|bottom"
         android:layout_marginBottom="50dp">
 
-        <!-- Start Writing Button (new button added to the left of Start Tracking) -->
+        <!-- Take Photo Button (renamed from Start Writing) -->
         <Button
-            android:id="@+id/startWritingButton"
+            android:id="@+id/takePhotoButton"
             android:layout_width="110dp"
             android:layout_height="110dp"
             android:backgroundTint="@color/green"
             android:elevation="2dp"
-            android:text="Start Writing"
+            android:text="Take Photo"
             android:textColor="@android:color/white"
             android:layout_marginEnd="16dp" />
 
