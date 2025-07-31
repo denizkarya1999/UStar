@@ -34,7 +34,6 @@ class ProcessedVideoRecorder(
     companion object {
         private const val TAG = "ProcessedVideoRecorder"
         private const val MIME_TYPE = "video/avc" // H.264 Advanced Video Coding
-
         /**
          * Returns the full file path in the Movies folder under "Exported Videos from Xamera".
          */
