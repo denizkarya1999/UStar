@@ -217,7 +217,7 @@ object YOLOHelper {
             Settings.BoundingBox.boxColor,
             Settings.BoundingBox.boxThickness
         )
-        val label = "Detected Cube (${("%.1f".format(box.confidence * 100))}%)"
+        val label = "Detected 3D Cube (${("%.1f".format(box.confidence * 100))}%)"
         Imgproc.putText(
             mat, label,
             Point(box.x1.toDouble(), (box.y1 - 5).coerceAtLeast(10f).toDouble()),
