@@ -41,8 +41,8 @@ object Settings {
         var enableYOLOinference: Boolean = true
     }
     object Inference {
-        var confidenceThreshold: Float = 0.5f
-        var iouThreshold: Float = 0.5f
+        var confidenceThreshold: Float = 0.1f
+        var iouThreshold: Float = 0.1f
     }
     object BoundingBox {
         var enableBoundingBox: Boolean = true
