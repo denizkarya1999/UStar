@@ -16,6 +16,7 @@ class AboutUStarActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Disable screen rotation (lock to portrait)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
         // Prevent screen from sleeping
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
