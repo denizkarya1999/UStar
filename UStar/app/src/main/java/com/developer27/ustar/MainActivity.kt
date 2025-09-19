@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraManager
 import android.net.Uri
@@ -23,12 +24,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
 import com.developer27.ustar.videoprocessing.CycleGAN
 import com.developer27.ustar.videoprocessing.ProcessedVideoRecorder
 import com.developer27.ustar.videoprocessing.Settings
 import com.developer27.ustar.videoprocessing.VideoProcessor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.nnapi.NnApiDelegate
@@ -67,6 +73,11 @@ class MainActivity : AppCompatActivity() {
     // ML components
     private var yoloInterpreter: Interpreter? = null
     private var videoProcessor: VideoProcessor? = null
+
+    // CycleGAN toggle state
+    private var isCycleGanApplied = false
+    private var cycleGanOriginalBitmap: Bitmap? = null
+    private var prevProcessingStateForCycle = false
 
     // Optional processed-video recorder (disabled by default)
     private var processedVideoRecorder: ProcessedVideoRecorder? = null
@@ -215,6 +226,78 @@ class MainActivity : AppCompatActivity() {
         /*------ Load the (YOLO) TFLite model on a background thread ------*/
         loadTFLiteModelThreaded("YOLOv3_float32.tflite")
 
+        // Trigger CycleGAN on button click
+        viewBinding.cycleGanButton.setOnClickListener {
+            if (!viewBinding.viewFinder.isAvailable) {
+                Toast.makeText(this, "Camera not ready yet.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (!isCycleGanApplied) {
+                // remember & pause the live pipeline so our overlay isn't overwritten
+                prevProcessingStateForCycle = isProcessing
+                isProcessing = false
+
+                viewBinding.cycleGanButton.isEnabled = false
+
+                lifecycleScope.launch {
+                    try {
+                        // 1) quick, downscaled grab on main thread
+                        val src: Bitmap? = withContext(Dispatchers.Main) {
+                            viewBinding.viewFinder.getBitmap(256, 256)
+                        }
+                        if (src == null) {
+                            Toast.makeText(this@MainActivity, "No frame to process.", Toast.LENGTH_SHORT).show()
+                            isProcessing = prevProcessingStateForCycle
+                            return@launch
+                        }
+
+                        // keep a copy for toggle-off
+                        cycleGanOriginalBitmap = src.copy(Bitmap.Config.ARGB_8888, false)
+
+                        // 2) run CycleGAN off the UI thread (with a safety timeout)
+                        val stylized = withTimeout(5_000) {   // 5s guard so UI won't feel stuck forever
+                            withContext(Dispatchers.Default) { CycleGAN.run(src) }
+                        }
+
+                        // 3) show overlay and mark applied
+                        withContext(Dispatchers.Main) {
+                            viewBinding.processedFrameView.setImageBitmap(stylized)
+                            viewBinding.processedFrameView.visibility = View.VISIBLE   // <-- ensure visible only when applied
+                            isCycleGanApplied = true
+
+                            // 🔴 update button UI
+                            viewBinding.cycleGanButton.text = "Stop CycleGAN"
+                            viewBinding.cycleGanButton.backgroundTintList =
+                                ContextCompat.getColorStateList(this@MainActivity, R.color.red)
+
+                            Log.i("CycleGAN", "✅ Applied CycleGAN and displayed result.")
+                        }
+                    } catch (t: Throwable) {
+                        Log.e("CycleGAN", "CycleGAN failed: ${t.message}", t)
+                        Toast.makeText(this@MainActivity, "CycleGAN error: ${t.message}", Toast.LENGTH_SHORT).show()
+                        // resume live pipeline on failure
+                        isProcessing = prevProcessingStateForCycle
+                    } finally {
+                        viewBinding.cycleGanButton.isEnabled = true
+                    }
+                }
+            } else {
+                // toggle OFF → hide overlay & resume live pipeline
+                viewBinding.processedFrameView.setImageBitmap(null)     // <-- clear
+                viewBinding.processedFrameView.visibility = View.GONE   // <-- hide overlay so preview shows
+                isCycleGanApplied = false
+                isProcessing = prevProcessingStateForCycle
+
+                // 🔵 reset button UI
+                viewBinding.cycleGanButton.text = "CycleGAN"
+                viewBinding.cycleGanButton.backgroundTintList =
+                    ContextCompat.getColorStateList(this@MainActivity, R.color.green)
+
+                Log.i("CycleGAN", "↩️ Restored live preview (processing=$isProcessing).")
+            }
+        }
+
         // Hook up pinch/slider zoom controls provided by CameraHelper/UI
         cameraHelper.setupZoomControls()
     }
@@ -303,6 +386,12 @@ class MainActivity : AppCompatActivity() {
     private fun stopProcessingAndRecording() {
         isRecording = false
         isProcessing = false
+
+        // clear any CycleGAN state when user stops
+        isCycleGanApplied = false
+        cycleGanOriginalBitmap = null
+        viewBinding.processedFrameView.setImageBitmap(null)
+        viewBinding.processedFrameView.visibility = View.GONE
 
         viewBinding.startProcessingButton.text = "Start Tracking"
         viewBinding.startProcessingButton.backgroundTintList =
