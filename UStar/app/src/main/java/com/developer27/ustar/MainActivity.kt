@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
+import com.developer27.ustar.videoprocessing.CycleGAN
 import com.developer27.ustar.videoprocessing.ProcessedVideoRecorder
 import com.developer27.ustar.videoprocessing.Settings
 import com.developer27.ustar.videoprocessing.VideoProcessor
@@ -207,6 +208,9 @@ class MainActivity : AppCompatActivity() {
 
         // Show/hide Take Photo button based on Settings
         updateTakePhotoVisibility()
+
+        /*------ Load the CycleGAN TorchLite model on a background thread ------*/
+        CycleGAN.load(this)
 
         /*------ Load the (YOLO) TFLite model on a background thread ------*/
         loadTFLiteModelThreaded("YOLOv3_float32.tflite")
