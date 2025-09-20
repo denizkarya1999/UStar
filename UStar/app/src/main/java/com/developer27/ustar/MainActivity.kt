@@ -43,6 +43,9 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
  * MainActivity
@@ -78,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private var isCycleGanApplied = false
     private var cycleGanOriginalBitmap: Bitmap? = null
     private var prevProcessingStateForCycle = false
+    private var cycleGanLoopJob: Job? = null
 
     // Optional processed-video recorder (disabled by default)
     private var processedVideoRecorder: ProcessedVideoRecorder? = null
@@ -214,6 +218,8 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Photo saved: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
                 val bmp = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
                 viewBinding.processedFrameView.setImageBitmap(bmp)
+                viewBinding.processedFrameView.visibility = View.GONE
+                viewBinding.processedFrameView.setImageBitmap(null)
             }
         }
 
@@ -222,6 +228,20 @@ class MainActivity : AppCompatActivity() {
 
         /*------ Load the CycleGAN TorchLite model on a background thread ------*/
         CycleGAN.load(this)
+
+        // Run once on a test asset image
+        val (inFile, outFile) = CycleGAN.runOnAssetToPictures(
+            this,
+            "test.jpg",
+            "test_out.png",
+            "test_in.png"
+        )
+
+        Toast.makeText(
+            this,
+            "CycleGAN input and output samples are saved in:\nPictures/UStar/",
+            Toast.LENGTH_LONG
+        ).show()
 
         /*------ Load the (YOLO) TFLite model on a background thread ------*/
         loadTFLiteModelThreaded("YOLOv3_float32.tflite")
@@ -242,7 +262,7 @@ class MainActivity : AppCompatActivity() {
 
                 lifecycleScope.launch {
                     try {
-                        // 1) quick, downscaled grab on main thread
+                        // Grab one frame immediately
                         val src: Bitmap? = withContext(Dispatchers.Main) {
                             viewBinding.viewFinder.getBitmap(256, 256)
                         }
@@ -252,44 +272,64 @@ class MainActivity : AppCompatActivity() {
                             return@launch
                         }
 
-                        // keep a copy for toggle-off
                         cycleGanOriginalBitmap = src.copy(Bitmap.Config.ARGB_8888, false)
 
-                        // 2) run CycleGAN off the UI thread (with a safety timeout)
-                        val stylized = withTimeout(5_000) {   // 5s guard so UI won't feel stuck forever
-                            withContext(Dispatchers.Default) { CycleGAN.run(src) }
-                        }
-
-                        // 3) show overlay and mark applied
+                        val stylized = withContext(Dispatchers.Default) { CycleGAN.run(src) }
                         withContext(Dispatchers.Main) {
                             viewBinding.processedFrameView.setImageBitmap(stylized)
-                            viewBinding.processedFrameView.visibility = View.VISIBLE   // <-- ensure visible only when applied
+                            viewBinding.processedFrameView.visibility = View.VISIBLE
                             isCycleGanApplied = true
 
-                            // 🔴 update button UI
+                            // update button UI
                             viewBinding.cycleGanButton.text = "Stop CycleGAN"
                             viewBinding.cycleGanButton.backgroundTintList =
                                 ContextCompat.getColorStateList(this@MainActivity, R.color.red)
 
-                            Log.i("CycleGAN", "✅ Applied CycleGAN and displayed result.")
+                            Log.i("CycleGAN", "✅ Applied CycleGAN and displayed first result.")
+                        }
+
+                        // start periodic refresh while CycleGAN is applied
+                        cycleGanLoopJob?.cancel()
+                        cycleGanLoopJob = lifecycleScope.launch {
+                            while (isActive && isCycleGanApplied) {
+                                try {
+                                    val srcLoop: Bitmap? = withContext(Dispatchers.Main) {
+                                        viewBinding.viewFinder.getBitmap(256, 256)
+                                    }
+                                    if (srcLoop != null) {
+                                        val stylizedLoop = withContext(Dispatchers.Default) { CycleGAN.run(srcLoop) }
+                                        withContext(Dispatchers.Main) {
+                                            if (isCycleGanApplied) {
+                                                viewBinding.processedFrameView.setImageBitmap(stylizedLoop)
+                                            }
+                                        }
+                                    }
+                                } catch (t: Throwable) {
+                                    Log.e("CycleGAN", "Periodic inference error: ${t.message}", t)
+                                }
+                                delay(1) // refresh every 0.001 seconds
+                            }
                         }
                     } catch (t: Throwable) {
                         Log.e("CycleGAN", "CycleGAN failed: ${t.message}", t)
                         Toast.makeText(this@MainActivity, "CycleGAN error: ${t.message}", Toast.LENGTH_SHORT).show()
-                        // resume live pipeline on failure
                         isProcessing = prevProcessingStateForCycle
                     } finally {
                         viewBinding.cycleGanButton.isEnabled = true
                     }
                 }
             } else {
-                // toggle OFF → hide overlay & resume live pipeline
-                viewBinding.processedFrameView.setImageBitmap(null)     // <-- clear
-                viewBinding.processedFrameView.visibility = View.GONE   // <-- hide overlay so preview shows
+                // toggle OFF → cancel loop, hide overlay, resume pipeline
+                cycleGanLoopJob?.cancel()
+                cycleGanLoopJob = null
+
+                viewBinding.processedFrameView.setImageBitmap(null)
+                viewBinding.processedFrameView.visibility =
+                    if (prevProcessingStateForCycle) View.VISIBLE else View.GONE
                 isCycleGanApplied = false
                 isProcessing = prevProcessingStateForCycle
 
-                // 🔵 reset button UI
+                // reset button UI
                 viewBinding.cycleGanButton.text = "CycleGAN"
                 viewBinding.cycleGanButton.backgroundTintList =
                     ContextCompat.getColorStateList(this@MainActivity, R.color.green)
@@ -316,11 +356,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        // If CycleGAN is showing, clear overlay & reset button first
+        if (isCycleGanApplied) {
+            isCycleGanApplied = false
+            cycleGanOriginalBitmap = null
+            viewBinding.processedFrameView.setImageBitmap(null)
+            viewBinding.processedFrameView.visibility = View.GONE
+            viewBinding.cycleGanButton.text = "CycleGAN"
+            viewBinding.cycleGanButton.backgroundTintList =
+                ContextCompat.getColorStateList(this, R.color.green)
+            Log.i("CycleGAN", "Paused: cleared CycleGAN overlay and reset button UI.")
+        }
+
+        // Pause live processing while backgrounded (even if not 'recording')
+        isProcessing = false
+
         // Stop any ongoing recording first to flush/close encoders safely
         if (isRecording) stopProcessingAndRecording()
+
         // Release camera resources and background thread
         cameraHelper.closeCamera()
         cameraHelper.stopBackgroundThread()
+
         super.onPause()
     }
 
@@ -399,6 +456,15 @@ class MainActivity : AppCompatActivity() {
 
         viewBinding.processedFrameView.visibility = View.GONE
         viewBinding.processedFrameView.setImageBitmap(null)
+
+        // clear any CycleGAN state when user stops
+        isCycleGanApplied = false
+        cycleGanOriginalBitmap = null
+
+        // Reset CycleGAN button UI to default
+        viewBinding.cycleGanButton.text = "CycleGAN"
+        viewBinding.cycleGanButton.backgroundTintList =
+            ContextCompat.getColorStateList(this, R.color.green)
 
         processedVideoRecorder?.stop()
         processedVideoRecorder = null

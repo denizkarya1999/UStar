@@ -1,14 +1,19 @@
 package com.developer27.ustar.videoprocessing
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import org.pytorch.IValue
 import org.pytorch.Module
 import org.pytorch.Tensor
 import org.pytorch.torchvision.TensorImageUtils
-import java.io.FileOutputStream
 import java.io.File
+import java.io.FileOutputStream
 
 object CycleGAN {
     private var module: Module? = null
@@ -86,5 +91,83 @@ object CycleGAN {
         }
         bmp.setPixels(pixels, 0, width, 0, 0, width, height)
         return bmp
+    }
+
+    /** Run inference on an image stored in assets/ and save the result into local storage. */
+    fun runOnAssetToPictures(
+        context: Context,
+        assetImageName: String,
+        outputFileName: String = "cyclegan_out.png",
+        inputFileName: String = "cyclegan_in.png"
+    ): Pair<File?, File?> {
+        requireNotNull(module) { "Call load(context) before running inference." }
+
+        // 1) Load asset → Bitmap
+        val srcBmp = context.assets.open(assetImageName).use { input ->
+            android.graphics.BitmapFactory.decodeStream(input)
+                ?: throw IllegalArgumentException("Failed to decode asset: $assetImageName")
+        }
+
+        // 2) Run inference
+        val outBmp = run(srcBmp)
+
+        return if (Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver
+
+            // Delete existing with same names
+            listOf(inputFileName, outputFileName).forEach { name ->
+                val selection = "${MediaStore.Images.Media.DISPLAY_NAME}=?"
+                resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, selection, arrayOf(name))
+            }
+
+            // Save input
+            val inputValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, inputFileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/UStar")
+            }
+            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, inputValues)?.let { uri ->
+                resolver.openOutputStream(uri).use {
+                    if (it != null) {
+                        srcBmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                }
+            }
+
+            // Save output
+            val outValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, outputFileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/UStar")
+            }
+            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, outValues)?.let { uri ->
+                resolver.openOutputStream(uri).use {
+                    if (it != null) {
+                        outBmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                }
+            }
+
+            Log.i("CycleGAN", "✅ Saved input as $inputFileName and output as $outputFileName in Pictures/UStar")
+
+            val baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            Pair(File(baseDir, "UStar/$inputFileName"), File(baseDir, "UStar/$outputFileName"))
+        } else {
+            // Legacy write (pre-Android 10)
+            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            val outDir = File(picturesDir, "UStar")
+            if (!outDir.exists()) outDir.mkdirs()
+
+            val inputFile = File(outDir, inputFileName)
+            if (inputFile.exists()) inputFile.delete()
+            FileOutputStream(inputFile).use { srcBmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+            val outFile = File(outDir, outputFileName)
+            if (outFile.exists()) outFile.delete()
+            FileOutputStream(outFile).use { outBmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+            Log.i("CycleGAN", "✅ Saved input as ${inputFile.absolutePath} and output as ${outFile.absolutePath}")
+            Pair(inputFile, outFile)
+        }
     }
 }
