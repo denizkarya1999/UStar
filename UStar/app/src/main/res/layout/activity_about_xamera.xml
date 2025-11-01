@@ -102,7 +102,7 @@
             android:id="@+id/textViewDevelopers"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Developers: Deniz Acikbas, Zhalgas Tileumuratin, Nathan Morris"
+            android:text="Developers: Deniz Acikbas, Ashwin Kumar Sarvadey, Christian Nwobu, Zhalgas Tileumuratin"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 

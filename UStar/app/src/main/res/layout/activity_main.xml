@@ -78,18 +78,6 @@
             android:orientation="horizontal"
             android:gravity="center">
 
-            <!-- CycleGAN Button -->
-            <Button
-                android:id="@+id/cycleGanButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="CycleGAN"
-                android:textSize="16sp"
-                android:layout_margin="8dp"
-                android:backgroundTint="@color/green"
-                android:textColor="@color/white"
-                android:elevation="2dp" />
-
             <!-- Settings Button (standard margin) -->
             <Button
                 android:id="@+id/settingsButton"
@@ -161,17 +149,6 @@
         android:gravity="center"
         android:layout_gravity="center_horizontal|bottom"
         android:layout_marginBottom="50dp">
-
-        <!-- Take Photo Button (renamed from Start Writing) -->
-        <Button
-            android:id="@+id/takePhotoButton"
-            android:layout_width="110dp"
-            android:layout_height="110dp"
-            android:backgroundTint="@color/green"
-            android:elevation="2dp"
-            android:text="Take Photo"
-            android:textColor="@android:color/white"
-            android:layout_marginEnd="16dp" />
 
         <!-- Start Tracking Button -->
         <Button

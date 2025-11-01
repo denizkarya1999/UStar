@@ -1,41 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen
     xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <PreferenceCategory
-        android:title="Detection Settings"
-        android:layout="@layout/preference_category_layout">
-
-        <!-- Bounding Box Enable Preference -->
-        <SwitchPreference
-            android:key="enable_bounding_box"
-            android:layout="@layout/preference_list_layout"
-            android:title="Enable Bounding Box"
-            android:summaryOn="Yes"
-            android:summaryOff="No"
-            android:defaultValue="true" />
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        android:title="Export Data"
-        android:layout="@layout/preference_category_layout">
-
-        <!-- NEW: Enable Photo Saving -->
-        <SwitchPreference
-            android:key="take_photo"
-            android:layout="@layout/preference_list_layout"
-            android:title="Enable Photo Saving"
-            android:summaryOn="Yes"
-            android:summaryOff="No"
-            android:defaultValue="false" />
-
-        <SwitchPreference
-            android:key="video_data"
-            android:layout="@layout/preference_list_layout"
-            android:title="Enable Video Saving"
-            android:summaryOn="Yes"
-            android:summaryOff="No"
-            android:defaultValue="false" />
-    </PreferenceCategory>
-
 </PreferenceScreen>
