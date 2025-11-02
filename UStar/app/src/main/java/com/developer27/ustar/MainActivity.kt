@@ -18,6 +18,7 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
 import com.developer27.ustar.machinelearning.CycleGAN
+import com.developer27.ustar.machinelearning.ResNet18
 import com.developer27.ustar.videoprocessing.Settings
 import com.developer27.ustar.videoprocessing.VideoProcessor
 
@@ -55,6 +57,11 @@ class MainActivity : AppCompatActivity() {
     private var isRecording = false
     private var isProcessing = false
     private var isProcessingFrame = false
+
+    // --- Global variable for prediction ---
+    companion object {
+        var currentPrediction: String = ""
+    }
 
     // Camera permissions
     private val REQUIRED_PERMISSIONS = arrayOf(
@@ -101,6 +108,9 @@ class MainActivity : AppCompatActivity() {
         /*------ Load the CycleGAN TorchLite model on a background thread ------*/
         CycleGAN.load(this)
 
+        // Load the ResNet-18 model on startup
+        ResNet18.loadModel(this)
+
         // Tap title to open website
         viewBinding.titleContainer.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.zhangxiao.me/")))
@@ -131,6 +141,10 @@ class MainActivity : AppCompatActivity() {
         viewBinding.startProcessingButton.setOnClickListener {
             if (isRecording) stopProcessingAndRecording() else startProcessingAndRecording()
         }
+
+        // ResNet-18 Inference: The prediction will update the label
+        val predictionText: TextView = findViewById(R.id.predictionText)
+        predictionText.text = currentPrediction
 
         // Switch camera
         viewBinding.switchCameraButton.setOnClickListener { switchCamera() }
@@ -213,6 +227,8 @@ class MainActivity : AppCompatActivity() {
 
         viewBinding.processedFrameView.setImageBitmap(null)
         viewBinding.processedFrameView.visibility = View.GONE
+        val predictionText: TextView = findViewById(R.id.predictionText)
+        predictionText.text = ""
 
         viewBinding.startProcessingButton.text = "Start Tracking"
         viewBinding.startProcessingButton.backgroundTintList =
@@ -236,6 +252,8 @@ class MainActivity : AppCompatActivity() {
 
                 result?.let { processed ->
                     viewBinding.processedFrameView.setImageBitmap(processed)
+                    val predictionText: TextView = findViewById(R.id.predictionText)
+                    predictionText.text = currentPrediction
                 }
 
                 isProcessingFrame = false

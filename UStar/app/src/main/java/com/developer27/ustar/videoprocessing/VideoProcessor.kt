@@ -5,13 +5,18 @@ package com.developer27.ustar.videoprocessing
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import android.widget.TextView
 import android.widget.Toast
+import com.developer27.ustar.MainActivity
+import com.developer27.ustar.MainActivity.Companion.currentPrediction
+import com.developer27.ustar.machinelearning.ResNet18
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 
 /* -----------------------------  Settings  ----------------------------- */
 
@@ -20,6 +25,9 @@ object Settings {
 }
 /** VideoProcessor */
 class VideoProcessor(private val context: Context) {
+
+    // Global variable to hold the processed bitmap
+    private var processedBitmap: Bitmap? = null
 
     init { initOpenCV() }
 
@@ -54,8 +62,14 @@ class VideoProcessor(private val context: Context) {
             // 1. Run CycleGAN inference first
             val cycleGanResult = runCycleGANInference(src)
 
-            // 2. Then run OpenCV processing later (placeholder for now)
-            runOpenCVProcessing(cycleGanResult)
+            // 2. Run OpenCV processing and assign to global variable
+            processedBitmap = runOpenCVProcessing(cycleGanResult)
+
+            // 3. Classify the CycleGAN output
+            currentPrediction = runResNet18Inference(processedBitmap!!)
+
+            // 4. Return processed bitmap
+            processedBitmap!!
         }
 
     /** Run CycleGAN inference on a given Bitmap */
@@ -69,9 +83,23 @@ class VideoProcessor(private val context: Context) {
         }
     }
 
+    /** Run ResNet18 classifier on the bitmap produced by CycleGAN */
+    private fun runResNet18Inference(input: Bitmap): String {
+        // Load model (logs success/failure internally)
+        val model = ResNet18.loadModel(context)
+            ?: return "ResNet-18 Model Unavailable"
+
+        val result = model.run(input)
+
+        return result.topClass  // e.g., "cat"
+    }
+
     /** TODO: <Ashwin Kumar Sarvadey> Placeholder for OpenCV-based image processing (will be implemented later) */
-    private fun runOpenCVProcessing(input: Bitmap): Bitmap {
-        // TODO: Add OpenCV operations after CycleGAN output
-        return input
+    private fun runOpenCVProcessing(bmp: Bitmap): Bitmap {
+        // For now, just assign the unmodified bitmap to processedBitmap
+        processedBitmap = bmp
+
+        // TODO: Add OpenCV operations later and update processedBitmap accordingly
+        return processedBitmap!!
     }
 }

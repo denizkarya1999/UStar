@@ -145,32 +145,52 @@
         android:id="@+id/button_container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:gravity="center"
         android:layout_gravity="center_horizontal|bottom"
         android:layout_marginBottom="50dp">
 
-        <!-- Start Tracking Button -->
-        <Button
-            android:id="@+id/startProcessingButton"
-            android:layout_width="110dp"
-            android:layout_height="110dp"
-            android:backgroundTint="@color/blue"
-            android:elevation="2dp"
-            android:text="Start Tracking"
+        <!-- Prediction Text (above buttons) -->
+        <TextView
+            android:id="@+id/predictionText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="20sp"
             android:textColor="@android:color/white"
-            android:layout_marginEnd="16dp" />
+            android:layout_marginBottom="16dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center" />
 
-        <!-- Switch Camera Button -->
-        <Button
-            android:id="@+id/switchCameraButton"
-            android:layout_width="110dp"
-            android:layout_height="110dp"
-            android:text="Switch Camera"
-            android:textColor="@color/darkBlue"
-            android:textSize="16sp"
-            android:backgroundTint="@color/yellow"
-            android:elevation="2dp" />
+        <!-- Row of buttons -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <!-- Start Tracking Button -->
+            <Button
+                android:id="@+id/startProcessingButton"
+                android:layout_width="110dp"
+                android:layout_height="110dp"
+                android:backgroundTint="@color/blue"
+                android:elevation="2dp"
+                android:text="Start Tracking"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="16dp" />
+
+            <!-- Switch Camera Button -->
+            <Button
+                android:id="@+id/switchCameraButton"
+                android:layout_width="110dp"
+                android:layout_height="110dp"
+                android:text="Switch Camera"
+                android:textColor="@color/darkBlue"
+                android:textSize="16sp"
+                android:backgroundTint="@color/yellow"
+                android:elevation="2dp" />
+        </LinearLayout>
     </LinearLayout>
 
 </FrameLayout>

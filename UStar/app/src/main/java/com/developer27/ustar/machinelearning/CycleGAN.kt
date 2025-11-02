@@ -20,7 +20,7 @@ object CycleGAN {
     private const val IMG = 256 // model expects 256x256
 
     /** Load the scripted model from assets into app files dir (once). */
-    fun load(context: Context, assetName: String = "G_AB.ptl") {
+    fun load(context: Context, assetName: String = "G_AB_CycleGAN.pt") {
         if (module == null) {
             val path = assetFilePath(context, assetName) // copy to files/ if needed
             module = Module.load(path) // load TorchScript module
