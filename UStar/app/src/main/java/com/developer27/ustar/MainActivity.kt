@@ -233,6 +233,9 @@ class MainActivity : AppCompatActivity() {
         viewBinding.startProcessingButton.text = "Start Tracking"
         viewBinding.startProcessingButton.backgroundTintList =
             ContextCompat.getColorStateList(this, R.color.blue)
+
+        // Trigger the AR viewer
+        startActivity(Intent(this, com.developer27.ustar.ar.ArViewerActivity::class.java))
     }
 
     /* ------------------------------------------------------------------ */
