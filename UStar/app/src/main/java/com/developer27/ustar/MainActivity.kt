@@ -16,8 +16,6 @@ import android.os.Bundle
 import android.preference.PreferenceManager
 import android.provider.MediaStore
 import android.util.Log
-import android.util.SparseIntArray
-import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
@@ -30,9 +28,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
-import com.developer27.ustar.machinelearning.CycleGAN
-import com.developer27.ustar.machinelearning.ResNet18
-import com.developer27.ustar.videoprocessing.Settings
+import com.developer27.ustar.machinelearning.Denoising_CycleGAN
+import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
+import com.developer27.ustar.machinelearning.Orientation_ResNet18
 import com.developer27.ustar.videoprocessing.VideoProcessor
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -110,11 +108,14 @@ class MainActivity : AppCompatActivity() {
         videoProcessor = VideoProcessor(this)
         viewBinding.processedFrameView.visibility = View.GONE
 
-        /*------ Load the CycleGAN TorchLite model on a background thread ------*/
-        CycleGAN.load(this)
+        // Load the CycleGAN based denoising model on startup
+        Denoising_CycleGAN.load(this)
 
-        // Load the ResNet-18 model on startup
-        ResNet18.loadModel(this)
+        // Load the ResNet-18 based optical ranging model on startup
+        Optical_Ranging_ResNet18.loadModel(this)
+
+        // Load the ResNet-18 based orientation model on startup
+        Orientation_ResNet18.loadModel(this)
 
         // Tap title to open website
         viewBinding.titleContainer.setOnClickListener {
@@ -151,7 +152,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding.collectDatasetButton.setOnClickListener {
             val saved = saveCurrentFrame()
             if (saved) {
-                Toast.makeText(this, "Frame saved to Pictures/UStar/Dataset", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Frame saved to Pictures/UStar/Frames", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Could not save frame.", Toast.LENGTH_SHORT).show()
             }
@@ -307,7 +308,7 @@ class MainActivity : AppCompatActivity() {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/UStar/Dataset")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/UStar/Frames")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
 

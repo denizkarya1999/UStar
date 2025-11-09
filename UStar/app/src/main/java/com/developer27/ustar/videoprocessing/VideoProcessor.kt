@@ -6,18 +6,15 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Environment
 import android.util.Log
-import android.widget.TextView
 import android.widget.Toast
-import com.developer27.ustar.MainActivity
 import com.developer27.ustar.MainActivity.Companion.currentPrediction
-import com.developer27.ustar.machinelearning.ResNet18
+import com.developer27.ustar.machinelearning.Orientation_ResNet18
+import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.opencv.android.Utils
 import org.opencv.core.Mat
-import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
@@ -70,14 +67,14 @@ class VideoProcessor(private val context: Context) {
             // 1. Reset the logMessage variable for logging
             logMessage = StringBuilder()
 
-            // 2. Run CycleGAN inference first
-            val cycleGanResult = runCycleGANInference(src)
+            // 2. Run CycleGAN based denoising inference first
+            val cycleGanResult = runCycleGANDenoisingInference(src)
 
-            // 3. Run OpenCV processing (starts the log content)
+            // 3. Run OpenCV processing for Computer Vision algorithms
             processedBitmap = runOpenCVProcessing(cycleGanResult)
 
-            // 4. Run ResNet-18 inference (appends prediction)
-            currentPrediction = runResNet18Inference(processedBitmap!!)
+            // 4. Run ResNet-18 inference for orientation and optical ranging
+            currentPrediction = runResNet18CombinedInference(processedBitmap!!)
 
             // 5. Write the full log to file (adds date + header)
             writeLogToFile()
@@ -86,26 +83,39 @@ class VideoProcessor(private val context: Context) {
             processedBitmap!!
         }
 
-    /** Run CycleGAN inference on a given Bitmap */
-    private fun runCycleGANInference(input: Bitmap): Bitmap {
+    /** Run CycleGAN denoising inference on a given Bitmap */
+    private fun runCycleGANDenoisingInference(input: Bitmap): Bitmap {
         return try {
-            com.developer27.ustar.machinelearning.CycleGAN.run(input)
+            com.developer27.ustar.machinelearning.Denoising_CycleGAN.run(input)
         } catch (e: Exception) {
-            Toast.makeText(context, "CycleGAN failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "CycleGAN based denoising failed: ${e.message}", Toast.LENGTH_SHORT).show()
             input
         }
     }
 
-    /** Run ResNet-18 classifier and append its result to the global log */
-    private fun runResNet18Inference(input: Bitmap): String {
-        val model = ResNet18.loadModel(context)
-            ?: return "ResNet-18 Model Unavailable"
+    /** Run ResNet-18 classifier for orientation and optical ranging and append its result to the global log */
+    private fun runResNet18CombinedInference(input: Bitmap): String {
+        // Run Orientation model
+        val orientationModel = Orientation_ResNet18.loadModel(context)
+            ?: return "ResNet-18 based Orientation Model Unavailable"
 
-        val result = model.run(input)
-        val prediction = result.topClass
+        // Run Optical Ranging model
+        val opticalRangingModel = Orientation_ResNet18.loadModel(context)
+            ?: return "ResNet-18 based Optical Ranging Model Unavailable"
+
+        // Run inference for optical ranging
+        val rangingResult = opticalRangingModel.run(input)
+        val rangingPrediction = rangingResult.topClass
+
+        // Run inference for orientation
+        val orientationResult = orientationModel.run(input)
+        val orientationPrediction = orientationResult.topClass
+
+        // Combined prediction
+        val prediction = "$rangingPrediction | $orientationPrediction"
 
         // Append the ResNet result line
-        logMessage.appendLine("ResNet-18 Prediction: $prediction")
+        logMessage.appendLine("ResNet-18 Predictions: $prediction")
 
         return prediction
     }
