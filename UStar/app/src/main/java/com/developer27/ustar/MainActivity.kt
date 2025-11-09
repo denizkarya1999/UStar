@@ -2,16 +2,19 @@ package com.developer27.ustar
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
+import android.graphics.drawable.BitmapDrawable
 import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.provider.MediaStore
 import android.util.Log
 import android.util.SparseIntArray
 import android.view.Surface
@@ -31,6 +34,8 @@ import com.developer27.ustar.machinelearning.CycleGAN
 import com.developer27.ustar.machinelearning.ResNet18
 import com.developer27.ustar.videoprocessing.Settings
 import com.developer27.ustar.videoprocessing.VideoProcessor
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /**
  * MainActivity
@@ -142,6 +147,16 @@ class MainActivity : AppCompatActivity() {
             if (isRecording) stopProcessingAndRecording() else startProcessingAndRecording()
         }
 
+        // Collect Dataset: save current frame (processed if available, else raw preview)
+        viewBinding.collectDatasetButton.setOnClickListener {
+            val saved = saveCurrentFrame()
+            if (saved) {
+                Toast.makeText(this, "Frame saved to Pictures/UStar/Dataset", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Could not save frame.", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // ResNet-18 Inference: The prediction will update the label
         val predictionText: TextView = findViewById(R.id.predictionText)
         predictionText.text = currentPrediction
@@ -215,6 +230,10 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getColorStateList(this, R.color.red)
         viewBinding.processedFrameView.visibility = View.VISIBLE
 
+
+        // Make Collect Dataset visible while processing
+        viewBinding.collectDatasetButton.visibility = View.VISIBLE
+
         videoProcessor?.reset()
     }
 
@@ -233,6 +252,9 @@ class MainActivity : AppCompatActivity() {
         viewBinding.startProcessingButton.text = "Start Tracking"
         viewBinding.startProcessingButton.backgroundTintList =
             ContextCompat.getColorStateList(this, R.color.blue)
+
+        // Hide Collect Dataset when processing stops
+        viewBinding.collectDatasetButton.visibility = View.GONE
 
         // Trigger the AR viewer
         startActivity(Intent(this, com.developer27.ustar.ar.ArViewerActivity::class.java))
@@ -261,6 +283,50 @@ class MainActivity : AppCompatActivity() {
 
                 isProcessingFrame = false
             }
+        }
+    }
+
+    //  Save Current Frame when processing
+    private fun saveCurrentFrame(): Boolean {
+        // Prefer the processed bitmap shown in processedFrameView
+        val processedDrawable = viewBinding.processedFrameView.drawable
+        val bitmap: Bitmap? = when (processedDrawable) {
+            is BitmapDrawable -> processedDrawable.bitmap
+            else -> viewBinding.viewFinder.bitmap   // Fallback to live preview
+        }
+
+        if (bitmap == null) {
+            Log.w("MainActivity", "saveCurrentFrame: bitmap is null")
+            return false
+        }
+
+        return try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(System.currentTimeMillis())
+            val fileName = "UStar_${timestamp}.png"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/UStar/Dataset")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+
+            val resolver = contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return false
+
+            resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "saveCurrentFrame failed: ${e.message}", e)
+            false
         }
     }
 }

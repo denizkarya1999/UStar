@@ -66,8 +66,7 @@ class VideoProcessor(private val context: Context) {
     }
 
     /** Process the frame with computer vision and other deep learning models */
-    private suspend fun processFrameInternal(src: Bitmap): Bitmap =
-        withContext(Dispatchers.IO) {
+    private suspend fun processFrameInternal(src: Bitmap): Bitmap = withContext(Dispatchers.IO) {
             // 1. Reset the logMessage variable for logging
             logMessage = StringBuilder()
 

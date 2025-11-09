@@ -169,6 +169,18 @@
             android:orientation="horizontal"
             android:gravity="center">
 
+            <!-- Collect Dataset Button (initially invisible) -->
+            <Button
+                android:id="@+id/collectDatasetButton"
+                android:layout_width="110dp"
+                android:layout_height="110dp"
+                android:backgroundTint="@color/green"
+                android:elevation="2dp"
+                android:text="Save Frame"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="16dp"
+                android:visibility="gone" />
+
             <!-- Start Tracking Button -->
             <Button
                 android:id="@+id/startProcessingButton"
