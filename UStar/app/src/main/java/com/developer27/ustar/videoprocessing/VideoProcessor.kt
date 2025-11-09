@@ -100,7 +100,7 @@ class VideoProcessor(private val context: Context) {
             ?: return "ResNet-18 based Orientation Model Unavailable"
 
         // Run Optical Ranging model
-        val opticalRangingModel = Orientation_ResNet18.loadModel(context)
+        val opticalRangingModel = Optical_Ranging_ResNet18.loadModel(context)
             ?: return "ResNet-18 based Optical Ranging Model Unavailable"
 
         // Run inference for optical ranging
