@@ -20,7 +20,7 @@ object Denoising_CycleGAN {
     private const val IMG = 256 // model expects 256x256
 
     /** Load the scripted model from assets into app files dir (once). */
-    fun load(context: Context, assetName: String = "UStar_Denoising_CycleGAN.ptl") {
+    fun load(context: Context, assetName: String = "G_AB_3_mobile.ptl") {
         if (module == null) {
             val path = assetFilePath(context, assetName) // copy to files/ if needed
             module = Module.load(path) // load TorchScript module
