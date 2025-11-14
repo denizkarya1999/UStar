@@ -53,8 +53,7 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
 
     // CIFAR-10 labels
     private val classes = arrayOf(
-        "Orientation Model: airplane","Orientation Model: automobile","Orientation Model: bird","Orientation Model: cat","Orientation Model: deer",
-        "Orientation Model: dog","Orientation Model: frog","Orientation Model: horse","Orientation Model: ship","Orientation Model: truck"
+        "airplane2","automobile2","bird2","cat2","deer2", "dog2","frog2","horse2","ship2","truck2"
     )
 
     data class Result(

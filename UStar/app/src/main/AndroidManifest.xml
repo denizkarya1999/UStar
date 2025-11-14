@@ -48,6 +48,10 @@
             </intent-filter>
         </activity>
         <activity android:name=".ar.ArViewerActivity" />
+        <activity
+            android:name=".extras.LocalPictureInferenceActivity"
+            android:exported="false"
+            android:label="Local Picture Inference" />
         <activity android:name=".AboutUStarActivity" />
         <activity android:name=".SettingsActivity" />
         <activity

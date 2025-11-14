@@ -53,8 +53,7 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
 
     // CIFAR-10 labels
     private val classes = arrayOf(
-        "Optical Ranging Model: airplane","Optical Ranging Model: automobile","Optical Ranging Model: bird","Optical Ranging Model: cat","Optical Ranging Model: deer",
-        "Optical Ranging Model: dog","Optical Ranging Model: frog","Optical Ranging Model: horse","Optical Ranging Model: ship","Optical Ranging Model: truck"
+        "airplane1","automobile1","bird1","cat1","deer1", "dog1","frog1","horse1","ship1","truck1"
     )
 
     data class Result(

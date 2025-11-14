@@ -6,8 +6,10 @@ import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
+import com.developer27.ustar.extras.LocalPictureInferenceActivity
 import com.developer27.ustar.videoprocessing.Settings
 
 /**
@@ -42,6 +44,18 @@ class SettingsActivity : AppCompatActivity() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             // Inflate the preference hierarchy from XML.
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
+
+            // Action preference: Local Picture Inference
+            val localPicturePref: Preference? =
+                findPreference("pref_local_picture_inference")
+
+            // Launch the activity listener
+            localPicturePref?.setOnPreferenceClickListener {
+                val ctx = requireContext()
+                val intent = Intent(ctx, LocalPictureInferenceActivity::class.java)
+                startActivity(intent)
+                true
+            }
         }
     }
 
