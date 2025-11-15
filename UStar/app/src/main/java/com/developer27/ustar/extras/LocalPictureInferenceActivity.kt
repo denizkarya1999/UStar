@@ -167,7 +167,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 }
 
                 // -------------------------------------------------------------------------
-                // 2) Optional ResNet-18 Optical Ranging Model
+                // 2) ResNet-18 Optical Ranging Model (uses noised bitmap)
                 // -------------------------------------------------------------------------
                 if (checkOpticalRanging.isChecked) {
                     val opticalResult = withContext(Dispatchers.Default) {
@@ -177,7 +177,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                                 this@LocalPictureInferenceActivity
                             )
                         }
-                        opticalModel?.run(denoisedBitmap)
+                        opticalModel?.run(bmp)
                     }
 
                     if (opticalResult != null) {
@@ -191,7 +191,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 }
 
                 // -------------------------------------------------------------------------
-                // 3) Optional ResNet-18 Orientation Guidance Model
+                // 3) ResNet-18 Orientation Guidance Model (uses noised bitmap)
                 // -------------------------------------------------------------------------
                 if (checkOrientation.isChecked) {
                     val orientationResult = withContext(Dispatchers.Default) {
@@ -201,7 +201,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                                 this@LocalPictureInferenceActivity
                             )
                         }
-                        orientationModel?.run(denoisedBitmap)
+                        orientationModel?.run(bmp)
                     }
 
                     if (orientationResult != null) {
