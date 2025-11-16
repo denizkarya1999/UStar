@@ -14,13 +14,13 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
 
     companion object {
         private const val INPUT_SIZE = 224
-        private val MEAN = floatArrayOf(0.4914f, 0.4822f, 0.4465f)
-        private val STD = floatArrayOf(0.2023f, 0.1994f, 0.2010f)
+        private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
+        private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
 
         /** Load the TorchScript model (.pt) from assets */
         fun loadModel(
             context: Context,
-            assetName: String = "UStar_Optical_Ranging_ResNet_18.pt"
+            assetName: String = "UStar_Optical_Ranging_ResNet_18_Christian.pt"
         ): Optical_Ranging_ResNet18? {
             return try {
                 val filePath = assetFilePath(context, assetName)
@@ -53,7 +53,7 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
 
     // CIFAR-10 labels
     private val classes = arrayOf(
-        "airplane1","automobile1","bird1","cat1","deer1", "dog1","frog1","horse1","ship1","truck1"
+        "1M", "2M", "3M", "4M"
     )
 
     data class Result(

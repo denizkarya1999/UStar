@@ -23,7 +23,6 @@ import java.util.Locale
 
 /* -----------------------------  Settings  ----------------------------- */
 object Settings {
-
 }
 
 /** VideoProcessor */
@@ -73,8 +72,8 @@ class VideoProcessor(private val context: Context) {
             // 3. Run OpenCV processing for Computer Vision algorithms
             processedBitmap = runOpenCVProcessing(cycleGanResult)
 
-            // 4. Run ResNet-18 inference for orientation and optical ranging
-            currentPrediction = runResNet18CombinedInference(processedBitmap!!)
+            // 4. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
+            currentPrediction = runResNet18CombinedInference(src)
 
             // 5. Write the full log to file (adds date + header)
             writeLogToFile()
@@ -112,10 +111,10 @@ class VideoProcessor(private val context: Context) {
         val orientationPrediction = orientationResult.topClass
 
         // Combined prediction
-        val prediction = "$rangingPrediction | $orientationPrediction"
+        val prediction = "Distance: $rangingPrediction | Orientation: $orientationPrediction"
 
         // Append the ResNet result line
-        logMessage.appendLine("ResNet-18 Predictions: $prediction")
+        logMessage.appendLine(prediction)
 
         return prediction
     }
