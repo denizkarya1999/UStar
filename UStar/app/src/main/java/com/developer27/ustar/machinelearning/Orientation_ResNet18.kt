@@ -14,8 +14,8 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
 
     companion object {
         private const val INPUT_SIZE = 224
-        private val MEAN = floatArrayOf(0.4914f, 0.4822f, 0.4465f)
-        private val STD = floatArrayOf(0.2023f, 0.1994f, 0.2010f)
+        private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
+        private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
 
         /** Load the TorchScript model (.pt) from assets */
         fun loadModel(
