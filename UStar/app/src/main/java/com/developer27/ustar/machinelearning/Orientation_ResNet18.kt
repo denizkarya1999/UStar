@@ -20,7 +20,7 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         /** Load the TorchScript model (.pt) from assets */
         fun loadModel(
             context: Context,
-            assetName: String = "UStar_Orientation_ResNet_18.pt"
+            assetName: String = "UStar_Orientation_Guidance_ResNet_18_Real.pt"
         ): Orientation_ResNet18? {
             return try {
                 val filePath = assetFilePath(context, assetName)
@@ -51,9 +51,9 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         }
     }
 
-    // CIFAR-10 labels
+    // Labels
     private val classes = arrayOf(
-        "airplane2","automobile2","bird2","cat2","deer2", "dog2","frog2","horse2","ship2","truck2"
+        "East", "North", "Northeast", "Northwest", "South", "Southeast", "Southwest", "West"
     )
 
     data class Result(
