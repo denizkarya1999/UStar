@@ -19,15 +19,19 @@ import com.developer27.ustar.machinelearning.Orientation_ResNet18
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
 /**
- * Activity allowing the user to select a picture
+ * Activity allowing the user to select pictures
  * and run multiple deep learning models:
  *  - CycleGAN-based denoising model
  *  - ResNet-18-based Optical Ranging model
  *  - ResNet-18-based Orientation Guidance model
  *
- * The user can choose which models to run with checkboxes.
+ * Supports selecting MULTIPLE images:
+ *  - CycleGAN shows ONE RANDOM image (original + denoised)
+ *  - Optical & Orientation run on ALL selected images
+ *  - User can enter ground truth labels to compute accuracy.
  */
 class LocalPictureInferenceActivity : AppCompatActivity() {
 
@@ -38,6 +42,10 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
     // UI text elements to show model predictions
     private lateinit var textOpticalResult: TextView
     private lateinit var textOrientationResult: TextView
+
+    // Ground-truth input for accuracy calculation
+    private lateinit var editOpticalLabel: EditText
+    private lateinit var editOrientationLabel: EditText
 
     // Loading indicator while inference is running
     private lateinit var progressBar: ProgressBar
@@ -51,8 +59,8 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
     private lateinit var checkOpticalRanging: CheckBox
     private lateinit var checkOrientation: CheckBox
 
-    // Bitmap being processed
-    private var selectedBitmap: Bitmap? = null
+    // Multiple bitmaps being processed
+    private val selectedBitmaps = mutableListOf<Bitmap>()
 
     // Lazily-loaded model references
     private var opticalModel: Optical_Ranging_ResNet18? = null
@@ -60,27 +68,53 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
 
     /**
      * ActivityResultLauncher to open gallery picker
-     * when user selects "Choose Image".
+     * when user selects "Choose Images".
+     *
+     * Uses GetMultipleContents -> user can select multiple images.
      */
-    private val pickImageLauncher =
-        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-            if (uri != null) {
-                // Load selected image
-                loadBitmapFromUri(uri)?.let { bmp ->
-                    selectedBitmap = bmp
+    private val pickImagesLauncher =
+        registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri>? ->
+            selectedBitmaps.clear()
 
-                    // Update UI
-                    imageOriginal.setImageBitmap(bmp)
-                    imageDenoised.setImageDrawable(null)
+            if (uris.isNullOrEmpty()) {
+                Toast.makeText(this, "No images selected.", Toast.LENGTH_SHORT).show()
+                imageOriginal.setImageDrawable(null)
+                imageDenoised.setImageDrawable(null)
+                btnRunInference.isEnabled = false
+                return@registerForActivityResult
+            }
 
-                    textOpticalResult.text = "Optical Ranging Model: —"
-                    textOrientationResult.text = "Orientation Guidance Model: —"
-
-                    btnRunInference.isEnabled = true
-                } ?: run {
-                    Toast.makeText(this, "Failed to load image.", Toast.LENGTH_SHORT).show()
+            var loadedCount = 0
+            for (uri in uris) {
+                val bmp = loadBitmapFromUri(uri)
+                if (bmp != null) {
+                    selectedBitmaps.add(bmp)
+                    loadedCount++
                 }
             }
+
+            if (selectedBitmaps.isEmpty()) {
+                Toast.makeText(this, "Failed to load selected images.", Toast.LENGTH_SHORT).show()
+                imageOriginal.setImageDrawable(null)
+                imageDenoised.setImageDrawable(null)
+                btnRunInference.isEnabled = false
+                return@registerForActivityResult
+            }
+
+            // Show the first selected image as a quick preview
+            imageOriginal.setImageBitmap(selectedBitmaps.first())
+            imageDenoised.setImageDrawable(null)
+
+            textOpticalResult.text = "Optical Ranging Model —"
+            textOrientationResult.text = "Orientation Guidance Model —"
+
+            btnRunInference.isEnabled = true
+
+            Toast.makeText(
+                this,
+                "Loaded $loadedCount image(s).",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -106,9 +140,13 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         checkOpticalRanging = findViewById(R.id.checkOpticalRanging)
         checkOrientation = findViewById(R.id.checkOrientation)
 
-        // Button: Choose image from gallery
+        // NEW: ground-truth label inputs
+        editOpticalLabel = findViewById(R.id.editOpticalLabel)
+        editOrientationLabel = findViewById(R.id.editOrientationLabel)
+
+        // Button: Choose images from gallery (multiple)
         btnSelectImage.setOnClickListener {
-            pickImageLauncher.launch("image/*")
+            pickImagesLauncher.launch("image/*")
         }
 
         // Button: Run selected models
@@ -124,9 +162,9 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
      *  - Heavy ML inference runs on background threads
      */
     private fun runSelectedModels() {
-        val bmp = selectedBitmap
-        if (bmp == null) {
-            Toast.makeText(this, "Please choose an image first.", Toast.LENGTH_SHORT).show()
+        if (selectedBitmaps.isEmpty()) {
+            Toast.makeText(this, "Please choose at least one image first.", Toast.LENGTH_SHORT)
+                .show()
             return
         }
 
@@ -139,6 +177,10 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
             return
         }
 
+        // Get ground-truth labels (optional)
+        val gtOptical = editOpticalLabel.text.toString().trim().ifEmpty { null }
+        val gtOrientation = editOrientationLabel.text.toString().trim().ifEmpty { null }
+
         // Disable UI during inference
         progressBar.visibility = View.VISIBLE
         btnRunInference.isEnabled = false
@@ -147,41 +189,64 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // -------------------------------------------------------------------------
-                // 1) Optional CycleGAN Denoising
+                // 1) Optional CycleGAN Denoising (ONE RANDOM IMAGE)
                 // -------------------------------------------------------------------------
-                val denoisedBitmap = withContext(Dispatchers.Default) {
-                    if (checkCycleGAN.isChecked) {
-                        // Load model (only loads once)
-                        Denoising_CycleGAN.load(this@LocalPictureInferenceActivity)
-                        Denoising_CycleGAN.run(bmp)
-                    } else {
-                        bmp
-                    }
-                }
-
-                // Update denoised image preview if CycleGAN was selected
                 if (checkCycleGAN.isChecked) {
+                    val randomIndex = Random.nextInt(selectedBitmaps.size)
+                    val randomBitmap = selectedBitmaps[randomIndex]
+
+                    val denoisedBitmap = withContext(Dispatchers.Default) {
+                        Denoising_CycleGAN.load(this@LocalPictureInferenceActivity)
+                        Denoising_CycleGAN.run(randomBitmap)
+                    }
+
+                    // Show random original + denoised pair
+                    imageOriginal.setImageBitmap(randomBitmap)
                     imageDenoised.setImageBitmap(denoisedBitmap)
                 } else {
+                    // If CycleGAN not selected, just show first image as reference
+                    imageOriginal.setImageBitmap(selectedBitmaps.first())
                     imageDenoised.setImageDrawable(null)
                 }
 
                 // -------------------------------------------------------------------------
-                // 2) ResNet-18 Optical Ranging Model (uses noised bitmap)
+                // 2) ResNet-18 Optical Ranging Model (ALL IMAGES)
                 // -------------------------------------------------------------------------
+                var opticalLastPrediction: String? = null
+                var opticalCorrect = 0
+                var opticalTotal = 0
+
                 if (checkOpticalRanging.isChecked) {
-                    val opticalResult = withContext(Dispatchers.Default) {
-                        // Lazy model loader
+                    withContext(Dispatchers.Default) {
                         if (opticalModel == null) {
                             opticalModel = Optical_Ranging_ResNet18.loadModel(
                                 this@LocalPictureInferenceActivity
                             )
                         }
-                        opticalModel?.run(bmp)
+
+                        selectedBitmaps.forEach { bmp ->
+                            val result = opticalModel?.run(bmp)
+                            if (result != null) {
+                                opticalLastPrediction = result.topClass
+                                opticalTotal++
+                                if (gtOptical != null &&
+                                    result.topClass.equals(gtOptical, ignoreCase = true)
+                                ) {
+                                    opticalCorrect++
+                                }
+                            }
+                        }
                     }
 
-                    if (opticalResult != null) {
-                        textOpticalResult.text = "Optical Ranging Model — " + opticalResult.topClass
+                    if (opticalTotal > 0) {
+                        val last = opticalLastPrediction ?: "N/A"
+                        val accText = if (gtOptical != null) {
+                            "  |  Correct: $opticalCorrect / $opticalTotal"
+                        } else {
+                            ""
+                        }
+                        textOpticalResult.text =
+                            "Optical Ranging Model — Last: $last$accText"
                     } else {
                         textOpticalResult.text =
                             "Optical Ranging Model - Failed to load or run."
@@ -191,21 +256,43 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 }
 
                 // -------------------------------------------------------------------------
-                // 3) ResNet-18 Orientation Guidance Model (uses noised bitmap)
+                // 3) ResNet-18 Orientation Guidance Model (ALL IMAGES)
                 // -------------------------------------------------------------------------
+                var orientationLastPrediction: String? = null
+                var orientationCorrect = 0
+                var orientationTotal = 0
+
                 if (checkOrientation.isChecked) {
-                    val orientationResult = withContext(Dispatchers.Default) {
-                        // Lazy model loader
+                    withContext(Dispatchers.Default) {
                         if (orientationModel == null) {
                             orientationModel = Orientation_ResNet18.loadModel(
                                 this@LocalPictureInferenceActivity
                             )
                         }
-                        orientationModel?.run(bmp)
+
+                        selectedBitmaps.forEach { bmp ->
+                            val result = orientationModel?.run(bmp)
+                            if (result != null) {
+                                orientationLastPrediction = result.topClass
+                                orientationTotal++
+                                if (gtOrientation != null &&
+                                    result.topClass.equals(gtOrientation, ignoreCase = true)
+                                ) {
+                                    orientationCorrect++
+                                }
+                            }
+                        }
                     }
 
-                    if (orientationResult != null) {
-                        textOrientationResult.text = "Orientation Guidance Model - " + orientationResult.topClass
+                    if (orientationTotal > 0) {
+                        val last = orientationLastPrediction ?: "N/A"
+                        val accText = if (gtOrientation != null) {
+                            "  |  Correct: $orientationCorrect / $orientationTotal"
+                        } else {
+                            ""
+                        }
+                        textOrientationResult.text =
+                            "Orientation Guidance Model — Last: $last$accText"
                     } else {
                         textOrientationResult.text =
                             "Orientation Guidance Model - Failed to load or run."

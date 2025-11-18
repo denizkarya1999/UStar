@@ -38,7 +38,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Original"
+                    android:text="Original (preview)"
                     android:textStyle="bold"
                     android:textSize="14sp"
                     android:paddingBottom="4dp"
@@ -66,7 +66,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Denoised (CycleGAN)"
+                    android:text="Denoised (CycleGAN, random sample)"
                     android:textStyle="bold"
                     android:textSize="14sp"
                     android:paddingBottom="4dp"
@@ -99,7 +99,7 @@
             android:id="@+id/textModelSelectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Select models to run:"
+            android:text="Select models to run on all selected images:"
             android:textSize="14sp"
             android:textStyle="bold"
             android:paddingTop="12dp"
@@ -117,7 +117,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:checked="true"
-                android:text="CycleGAN-based Denoising Model"
+                android:text="CycleGAN-based Denoising (one random image)"
                 android:textColor="#FFCB05" />
 
             <CheckBox
@@ -136,6 +136,41 @@
                 android:text="ResNet-18-based Orientation Guidance Model"
                 android:textColor="#FFCB05" />
         </LinearLayout>
+
+        <!-- Ground truth inputs -->
+        <TextView
+            android:id="@+id/textGroundTruthLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Optional: enter ground-truth labels for accuracy:"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingTop="12dp"
+            android:paddingBottom="4dp"
+            android:textColor="#FFCB05" />
+
+        <EditText
+            android:id="@+id/editOpticalLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Distance GT label (e.g., 1M, 2M, 3M)"
+            android:singleLine="true"
+            android:padding="8dp"
+            android:textColor="#FFCB05"
+            android:textColorHint="#80FFCB05"
+            android:background="#19324F" />
+
+        <EditText
+            android:id="@+id/editOrientationLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Orientation GT label (e.g., North, West, South, East)"
+            android:singleLine="true"
+            android:padding="8dp"
+            android:layout_marginTop="4dp"
+            android:textColor="#FFCB05"
+            android:textColorHint="#80FFCB05"
+            android:background="#19324F" />
 
         <TextView
             android:id="@+id/textOpticalResult"
@@ -168,7 +203,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Choose Image"
+                android:text="Choose Images"
                 android:textColor="#00274C"
                 android:background="#FFCB05" />
 
