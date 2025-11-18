@@ -20,7 +20,7 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
         /** Load the TorchScript model (.pt) from assets */
         fun loadModel(
             context: Context,
-            assetName: String = "UStar_Optical_Ranging_ResNet_18_Real.pt"
+            assetName: String = "UStar_Optical_Ranging_ResNet_18_Simulated.pt"
         ): Optical_Ranging_ResNet18? {
             return try {
                 val filePath = assetFilePath(context, assetName)
