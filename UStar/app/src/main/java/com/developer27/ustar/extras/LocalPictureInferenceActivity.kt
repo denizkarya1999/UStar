@@ -401,20 +401,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                     writeLogToFile()
                 }
 
-                Toast.makeText(
-                    this@LocalPictureInferenceActivity,
-                    "Log saved to Documents/UStar_Cube_Prediction.txt",
-                    Toast.LENGTH_SHORT
-                ).show()
-
             } catch (e: Exception) {
-                // Any unhandled exception during inference
-                Toast.makeText(
-                    this@LocalPictureInferenceActivity,
-                    "Inference failed: ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
-
                 logMessage.appendLine("ERROR during inference: ${e.message}")
 
                 // Try to write partial log as well
