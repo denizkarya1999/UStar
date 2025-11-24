@@ -17,8 +17,8 @@ class Renderer(private val arMain: ArMain) : GLSurfaceView.Renderer {
     private val vpMatrix = FloatArray(16)
     private val mvpMatrix = FloatArray(16)
 
-    // Scale the arrow (shape drawn in texture)
-    private val arrowScale = 0.45f
+    // Large, but still fits fully in view
+    private val arrowScale = 1.4f   // instead of 1.8f
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         // Black background
@@ -56,7 +56,7 @@ class Renderer(private val arMain: ArMain) : GLSurfaceView.Renderer {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
         Matrix.setIdentityM(modelMatrix, 0)
-        // Slightly scale down the quad
+        // Scale quad
         Matrix.scaleM(modelMatrix, 0, arrowScale, arrowScale, arrowScale)
 
         Matrix.multiplyMM(vpMatrix, 0, projMatrix, 0, viewMatrix, 0)
@@ -65,10 +65,6 @@ class Renderer(private val arMain: ArMain) : GLSurfaceView.Renderer {
         arrow?.draw(mvpMatrix)
     }
 
-    /**
-     * Re-read the log file and update the texture.
-     * The arrow orientation & distance are fully controlled by the txt file.
-     */
     fun loadTextureFromFile() {
         val bmp = arMain.buildArrowBitmap()
         textureId = arMain.createTextureFromBitmap(bmp)

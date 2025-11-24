@@ -191,6 +191,7 @@
             android:paddingBottom="12dp"
             android:textColor="#FFCB05" />
 
+        <!-- Row: Choose Images / Run Selected Models -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -217,8 +218,17 @@
                 android:enabled="false"
                 android:textColor="#00274C"
                 android:background="#FFCB05" />
-
         </LinearLayout>
+
+        <!-- NEW: Launch AR Activity button -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnLaunchAr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Launch AR Activity"
+            android:textColor="#00274C"
+            android:background="#FFCB05" />
 
     </LinearLayout>
 </ScrollView>

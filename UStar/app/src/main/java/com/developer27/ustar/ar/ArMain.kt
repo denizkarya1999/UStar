@@ -69,7 +69,6 @@ class ArMain @JvmOverloads constructor(
 
         val rawText = try {
             if (!logFile.exists()) {
-                // Fallback content if file doesn't exist yet
                 "UStar UIOD Tag Features\n" +
                         "Prediction Date: N/A\n" +
                         "OpenCV Initialization Status: false\n" +
@@ -96,18 +95,14 @@ class ArMain @JvmOverloads constructor(
 
         rawText.lines().forEach { line ->
             if (line.startsWith("Distance:", ignoreCase = true)) {
-                // Example line in your file:
-                // Distance: 1M | Orientation: Northwest
                 val parts = line.split("|")
 
-                // Distance part
                 if (parts.isNotEmpty()) {
                     val distRegex = Regex("""Distance:\s*(\d+)\s*[Mm]""")
                     val match = distRegex.find(parts[0])
                     distanceMeters = match?.groupValues?.get(1)?.toIntOrNull()
                 }
 
-                // Orientation part
                 if (parts.size > 1) {
                     val oriRegex = Regex("""Orientation:\s*([A-Za-z]+)""")
                     val matchOri = oriRegex.find(parts[1])
@@ -116,82 +111,68 @@ class ArMain @JvmOverloads constructor(
             }
         }
 
-        // Clamp distance for safety
         val clampedDist = distanceMeters?.coerceIn(1, 4) ?: 1
         val distanceText = "${clampedDist}m"
         val angle = orientationToAngle(orientationLabel)
 
-        // --- Create bitmap and canvas ---
         val bmp = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
 
-        // White background so arrow is clearly visible
-        canvas.drawColor(Color.WHITE)
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
-        // Paints
         val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
+            color = Color.WHITE
             style = Paint.Style.FILL
         }
 
         val arrowOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.DKGRAY
+            color = Color.WHITE
             style = Paint.Style.STROKE
             strokeWidth = 6f
         }
 
-        val distancePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 80f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-
+        // Centered, smaller debug text
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = 52f
+            color = Color.WHITE
+            textSize = 40f                // smaller so it fits nicely
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER  // <-- key for centering
         }
 
-        // --- Draw orientation/distance text (debug) in top-left corner ---
+        val centerX = bmp.width / 2f
+
+        // Centered lines at the top
         canvas.drawText(
-            "Orientation: ${orientationLabel.uppercase()}",
-            40f, 90f, labelPaint
+            "ORIENTATION: ${orientationLabel.uppercase()}",
+            centerX,
+            80f,
+            labelPaint
         )
         canvas.drawText(
-            "Distance: $distanceText",
-            40f, 160f, labelPaint
+            "DISTANCE: ${distanceText}",
+            centerX,
+            140f,
+            labelPaint
         )
 
-        // --- Define arrow path centered at origin, pointing UP (−Y) ---
+        // --- Arrow path as before ---
         val arrowPath = Path().apply {
-            // Tip of arrow (up)
             moveTo(0f, -280f)
-            // Left head
             lineTo(-90f, -130f)
-            // Left side shaft
             lineTo(-40f, -130f)
             lineTo(-40f, 260f)
-            // Right side shaft
             lineTo(40f, 260f)
             lineTo(40f, -130f)
-            // Right head
             lineTo(90f, -130f)
             close()
         }
 
-        // --- Move origin to center and rotate arrow by orientation angle ---
         canvas.save()
         canvas.translate(512f, 512f)
         canvas.rotate(angle)
 
-        // Filled arrow
         canvas.drawPath(arrowPath, arrowPaint)
-        // Outline
         canvas.drawPath(arrowPath, arrowOutline)
-
-        // Distance text on arrow (slightly below center)
-        canvas.drawText(distanceText, 0f, 80f, distancePaint)
 
         canvas.restore()
 

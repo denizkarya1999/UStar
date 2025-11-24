@@ -1,10 +1,13 @@
 package com.developer27.ustar.extras
 
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.*
@@ -19,6 +22,10 @@ import com.developer27.ustar.machinelearning.Orientation_ResNet18
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.random.Random
 
 /**
@@ -53,6 +60,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
     // Action buttons
     private lateinit var btnSelectImage: AppCompatButton
     private lateinit var btnRunInference: AppCompatButton
+    private lateinit var btnLaunchAr: AppCompatButton   // NEW: Launch AR button
 
     // Model selector checkboxes
     private lateinit var checkCycleGAN: CheckBox
@@ -65,6 +73,9 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
     // Lazily-loaded model references
     private var opticalModel: Optical_Ranging_ResNet18? = null
     private var orientationModel: Orientation_ResNet18? = null
+
+    // --- Logging support (same style as VideoProcessor) ---
+    private val logMessage = StringBuilder()
 
     /**
      * ActivityResultLauncher to open gallery picker
@@ -135,6 +146,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
 
         btnSelectImage = findViewById(R.id.btnSelectImage)
         btnRunInference = findViewById(R.id.btnRunInference)
+        btnLaunchAr = findViewById(R.id.btnLaunchAr)      // NEW
 
         checkCycleGAN = findViewById(R.id.checkCycleGAN)
         checkOpticalRanging = findViewById(R.id.checkOpticalRanging)
@@ -153,6 +165,21 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         btnRunInference.setOnClickListener {
             runSelectedModels()
         }
+
+        // Button: Launch AR Activity
+        btnLaunchAr.setOnClickListener {
+            try {
+                val intent = Intent(this, com.developer27.ustar.ar.ArViewerActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this,
+                    "Unable to launch AR Activity: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
     }
 
     /**
@@ -181,12 +208,35 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         val gtOptical = editOpticalLabel.text.toString().trim().ifEmpty { null }
         val gtOrientation = editOrientationLabel.text.toString().trim().ifEmpty { null }
 
+        // --- Initialize log for this run ---
+        // IMPORTANT: do NOT add extra header/date here.
+        // VideoProcessor's writeLogToFile already adds:
+        // "UStar UIOD Tag Features" + "Prediction Date: ..."
+        // So here we only log details and predictions.
+        logMessage.clear()
+        logMessage.appendLine("LocalPictureInference: totalImages=${selectedBitmaps.size}")
+        logMessage.appendLine("GT Optical: ${gtOptical ?: "N/A"}")
+        logMessage.appendLine("GT Orientation: ${gtOrientation ?: "N/A"}")
+        logMessage.appendLine(
+            "Models: " +
+                    "CycleGAN=${checkCycleGAN.isChecked}, " +
+                    "Optical=${checkOpticalRanging.isChecked}, " +
+                    "Orientation=${checkOrientation.isChecked}"
+        )
+        logMessage.appendLine("--------------------------------------------------")
+
         // Disable UI during inference
         progressBar.visibility = View.VISIBLE
         btnRunInference.isEnabled = false
         btnSelectImage.isEnabled = false
+        btnLaunchAr.isEnabled = false
 
         lifecycleScope.launch {
+            // We'll keep these outside so we can write final
+            // Distance | Orientation line at the end.
+            var opticalLastPrediction: String? = null
+            var orientationLastPrediction: String? = null
+
             try {
                 // -------------------------------------------------------------------------
                 // 1) Optional CycleGAN Denoising (ONE RANDOM IMAGE)
@@ -203,16 +253,19 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                     // Show random original + denoised pair
                     imageOriginal.setImageBitmap(randomBitmap)
                     imageDenoised.setImageBitmap(denoisedBitmap)
+
+                    logMessage.appendLine("CycleGAN: Denoised sample index = $randomIndex")
                 } else {
                     // If CycleGAN not selected, just show first image as reference
                     imageOriginal.setImageBitmap(selectedBitmaps.first())
                     imageDenoised.setImageDrawable(null)
+
+                    logMessage.appendLine("CycleGAN: not run in this session.")
                 }
 
                 // -------------------------------------------------------------------------
                 // 2) ResNet-18 Optical Ranging Model (ALL IMAGES)
                 // -------------------------------------------------------------------------
-                var opticalLastPrediction: String? = null
                 var opticalCorrect = 0
                 var opticalTotal = 0
 
@@ -224,16 +277,25 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                             )
                         }
 
-                        selectedBitmaps.forEach { bmp ->
+                        selectedBitmaps.forEachIndexed { index, bmp ->
                             val result = opticalModel?.run(bmp)
                             if (result != null) {
                                 opticalLastPrediction = result.topClass
                                 opticalTotal++
+
+                                // Log per-image prediction
+                                logMessage.appendLine(
+                                    "OpticalRanging: image#$index => pred=${result.topClass}, " +
+                                            "gt=${gtOptical ?: "N/A"}"
+                                )
+
                                 if (gtOptical != null &&
                                     result.topClass.equals(gtOptical, ignoreCase = true)
                                 ) {
                                     opticalCorrect++
                                 }
+                            } else {
+                                logMessage.appendLine("OpticalRanging: image#$index => NULL result")
                             }
                         }
                     }
@@ -247,18 +309,24 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                         }
                         textOpticalResult.text =
                             "Optical Ranging Model — Last: $last$accText"
+
+                        logMessage.appendLine(
+                            "OpticalRanging Summary: last=$opticalLastPrediction, " +
+                                    "correct=$opticalCorrect, total=$opticalTotal"
+                        )
                     } else {
                         textOpticalResult.text =
                             "Optical Ranging Model - Failed to load or run."
+                        logMessage.appendLine("OpticalRanging: No images processed (load/run failed).")
                     }
                 } else {
                     textOpticalResult.text = "Optical Ranging Model —"
+                    logMessage.appendLine("OpticalRanging: not run in this session.")
                 }
 
                 // -------------------------------------------------------------------------
                 // 3) ResNet-18 Orientation Guidance Model (ALL IMAGES)
                 // -------------------------------------------------------------------------
-                var orientationLastPrediction: String? = null
                 var orientationCorrect = 0
                 var orientationTotal = 0
 
@@ -270,16 +338,25 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                             )
                         }
 
-                        selectedBitmaps.forEach { bmp ->
+                        selectedBitmaps.forEachIndexed { index, bmp ->
                             val result = orientationModel?.run(bmp)
                             if (result != null) {
                                 orientationLastPrediction = result.topClass
                                 orientationTotal++
+
+                                // Log per-image prediction
+                                logMessage.appendLine(
+                                    "Orientation: image#$index => pred=${result.topClass}, " +
+                                            "gt=${gtOrientation ?: "N/A"}"
+                                )
+
                                 if (gtOrientation != null &&
                                     result.topClass.equals(gtOrientation, ignoreCase = true)
                                 ) {
                                     orientationCorrect++
                                 }
+                            } else {
+                                logMessage.appendLine("Orientation: image#$index => NULL result")
                             }
                         }
                     }
@@ -293,13 +370,42 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                         }
                         textOrientationResult.text =
                             "Orientation Guidance Model — Last: $last$accText"
+
+                        logMessage.appendLine(
+                            "Orientation Summary: last=$orientationLastPrediction, " +
+                                    "correct=$orientationCorrect, total=$orientationTotal"
+                        )
                     } else {
                         textOrientationResult.text =
                             "Orientation Guidance Model - Failed to load or run."
+                        logMessage.appendLine("Orientation: No images processed (load/run failed).")
                     }
                 } else {
                     textOrientationResult.text = "Orientation Guidance Model —"
+                    logMessage.appendLine("Orientation: not run in this session.")
                 }
+
+                logMessage.appendLine("--------------------------------------------------")
+
+                // 🔴 KEY PART: add final combined line exactly like VideoProcessor
+                val distanceForLog = opticalLastPrediction ?: "N/A"
+                val orientationForLog = orientationLastPrediction ?: "N/A"
+                val combinedPrediction =
+                    "Distance: $distanceForLog | Orientation: $orientationForLog"
+                logMessage.appendLine(combinedPrediction)
+
+                // -------------------------------------------------------------------------
+                // 4) Write log to file (same style as VideoProcessor)
+                // -------------------------------------------------------------------------
+                withContext(Dispatchers.IO) {
+                    writeLogToFile()
+                }
+
+                Toast.makeText(
+                    this@LocalPictureInferenceActivity,
+                    "Log saved to Documents/UStar_Cube_Prediction.txt",
+                    Toast.LENGTH_SHORT
+                ).show()
 
             } catch (e: Exception) {
                 // Any unhandled exception during inference
@@ -308,11 +414,19 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                     "Inference failed: ${e.message}",
                     Toast.LENGTH_LONG
                 ).show()
+
+                logMessage.appendLine("ERROR during inference: ${e.message}")
+
+                // Try to write partial log as well
+                withContext(Dispatchers.IO) {
+                    writeLogToFile()
+                }
             } finally {
                 // Re-enable UI no matter what
                 progressBar.visibility = View.GONE
                 btnRunInference.isEnabled = true
                 btnSelectImage.isEnabled = true
+                btnLaunchAr.isEnabled = true
             }
         }
     }
@@ -328,6 +442,39 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    /**
+     * Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt
+     * (same filename / style as your VideoProcessor logger).
+     *
+     * NOTE: On Android 11+ you may need to handle scoped storage properly
+     * or adjust this path.
+     */
+    private fun writeLogToFile() {
+        try {
+            val documentsDir =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            if (!documentsDir.exists()) documentsDir.mkdirs()
+
+            val logFile = File(documentsDir, "UStar_Cube_Prediction.txt")
+
+            val timestamp =
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+            val fullLog = StringBuilder()
+                .appendLine("UStar UIOD Tag Features")
+                .appendLine("Prediction Date: $timestamp")
+                .append(logMessage.toString())
+
+            FileWriter(logFile, false).use { writer ->
+                writer.write(fullLog.toString())
+            }
+
+            Log.i("UStarLogger", "LocalInference file overwritten with:\n$fullLog")
+        } catch (e: Exception) {
+            Log.e("UStarLogger", "Error writing log file (LocalInference): ${e.message}")
         }
     }
 }
