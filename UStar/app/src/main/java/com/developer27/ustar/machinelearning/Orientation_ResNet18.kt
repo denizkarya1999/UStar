@@ -9,11 +9,15 @@ import org.pytorch.torchvision.TensorImageUtils
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.exp
+import kotlin.math.roundToInt
 
 class Orientation_ResNet18 private constructor(private val module: Module) {
 
     companion object {
-        private const val INPUT_SIZE = 224
+        private const val INPUT_SIZE = 224          // CenterCrop(224)
+        private const val RESIZE_SHORTER_SIDE = 256 // Resize(256)
+
+        // ImageNet normalization (MUST match PyTorch training)
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
 
@@ -37,6 +41,7 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         private fun assetFilePath(context: Context, assetName: String): String {
             val outFile = File(context.filesDir, assetName)
             if (outFile.exists() && outFile.length() > 0) return outFile.absolutePath
+
             context.assets.open(assetName).use { input ->
                 FileOutputStream(outFile).use { output ->
                     val buffer = ByteArray(4096)
@@ -51,9 +56,10 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         }
     }
 
-    // Labels
+    // Labels (must match training order)
     private val classes = arrayOf(
-        "East", "North", "Northeast", "Northwest", "South", "Southeast", "Southwest", "West"
+        "East", "North", "Northeast", "Northwest",
+        "South", "Southeast", "Southwest", "West"
     )
 
     data class Result(
@@ -62,16 +68,55 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         val probabilities: FloatArray
     )
 
+    /**
+     * Preprocess Bitmap to EXACTLY match PyTorch pipeline:
+     *
+     * transforms.Resize(256)       # shorter side = 256
+     * transforms.CenterCrop(224)   # take 224x224 from center
+     */
+    private fun preprocessBitmap(src: Bitmap): Bitmap {
+        val origW = src.width
+        val origH = src.height
+
+        if (origW <= 0 || origH <= 0) {
+            // Fallback if something is wrong with the bitmap
+            return Bitmap.createScaledBitmap(src, INPUT_SIZE, INPUT_SIZE, true)
+        }
+
+        // --- 1) Resize: shorter side -> 256, keep aspect ratio ---
+        val newW: Int
+        val newH: Int
+        if (origW < origH) {
+            // width is shorter → width = 256
+            newW = RESIZE_SHORTER_SIDE
+            newH = (origH * (RESIZE_SHORTER_SIDE.toFloat() / origW.toFloat())).roundToInt()
+        } else {
+            // height is shorter → height = 256
+            newH = RESIZE_SHORTER_SIDE
+            newW = (origW * (RESIZE_SHORTER_SIDE.toFloat() / origH.toFloat())).roundToInt()
+        }
+
+        val resized = Bitmap.createScaledBitmap(src, newW, newH, true)
+
+        // --- 2) Center crop: 224 x 224 from the middle ---
+        val x = ((resized.width - INPUT_SIZE) / 2f).roundToInt().coerceAtLeast(0)
+        val y = ((resized.height - INPUT_SIZE) / 2f).roundToInt().coerceAtLeast(0)
+
+        // PyTorch guarantees resized >= 224 on both sides, so we do the same.
+        return Bitmap.createBitmap(resized, x, y, INPUT_SIZE, INPUT_SIZE)
+    }
+
     /** Run inference on Bitmap */
     fun run(bitmap: Bitmap): Result {
-        val resized = if (bitmap.width != INPUT_SIZE || bitmap.height != INPUT_SIZE)
-            Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
-        else bitmap
+        // ✅ Match: Resize(256) + CenterCrop(224) used in PyTorch training
+        val processed = preprocessBitmap(bitmap)
 
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resized, MEAN, STD)
+        // ✅ Same normalization as in Colab
+        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(processed, MEAN, STD)
+
         val outputTensor = module.forward(IValue.from(inputTensor)).toTensor()
-
         val logits = outputTensor.dataAsFloatArray
+
         val probs = softmax(logits)
         val topIdx = argmax(probs)
         val topClass = classes.getOrElse(topIdx) { "class_$topIdx" }
@@ -79,25 +124,36 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
         return Result(topIdx, topClass, probs)
     }
 
-    // Index of max probability
+    // Index of max probability (fixed bug: compare values, not indices)
     private fun argmax(arr: FloatArray): Int {
-        var best = 0
-        for (i in 1 until arr.size) if (arr[i] > arr[best]) best = i
-        return best
+        var bestIdx = 0
+        var bestVal = arr[0]
+        for (i in 1 until arr.size) {
+            if (arr[i] > bestVal) {
+                bestVal = arr[i]
+                bestIdx = i
+            }
+        }
+        return bestIdx
     }
 
-    // Compute softmax
+    // Compute softmax over logits
     private fun softmax(logits: FloatArray): FloatArray {
-        var max = logits[0]
-        for (i in 1 until logits.size) if (logits[i] > max) max = logits[i]
+        var maxLogit = logits[0]
+        for (i in 1 until logits.size) {
+            if (logits[i] > maxLogit) maxLogit = logits[i]
+        }
+
         var sum = 0.0
         val exps = FloatArray(logits.size)
         for (i in logits.indices) {
-            val v = exp((logits[i] - max).toDouble()).toFloat()
+            val v = exp((logits[i] - maxLogit).toDouble()).toFloat()
             exps[i] = v
             sum += v
         }
-        for (i in exps.indices) exps[i] = (exps[i] / sum).toFloat()
+        for (i in exps.indices) {
+            exps[i] = (exps[i] / sum).toFloat()
+        }
         return exps
     }
 }

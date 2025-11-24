@@ -9,11 +9,14 @@ import org.pytorch.torchvision.TensorImageUtils
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.exp
+import kotlin.math.roundToInt
 
 class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
 
     companion object {
-        private const val INPUT_SIZE = 224
+        private const val INPUT_SIZE = 224              // CenterCrop(224)
+        private const val RESIZE_SHORTER_SIDE = 256     // Resize(256)
+
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
 
@@ -62,13 +65,46 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
         val probabilities: FloatArray
     )
 
+    /**
+     * Preprocess Bitmap to match PyTorch pipeline:
+     *   Resize(256) on shorter side + CenterCrop(224)
+     */
+    private fun preprocessBitmap(src: Bitmap): Bitmap {
+        val origW = src.width
+        val origH = src.height
+
+        if (origW <= 0 || origH <= 0) {
+            return Bitmap.createScaledBitmap(src, INPUT_SIZE, INPUT_SIZE, true)
+        }
+
+        // 1) Resize: shorter side -> 256, keep aspect ratio
+        val newW: Int
+        val newH: Int
+        if (origW < origH) {
+            // width is shorter → width = 256
+            newW = RESIZE_SHORTER_SIDE
+            newH = (origH * (RESIZE_SHORTER_SIDE.toFloat() / origW.toFloat())).roundToInt()
+        } else {
+            // height is shorter → height = 256
+            newH = RESIZE_SHORTER_SIDE
+            newW = (origW * (RESIZE_SHORTER_SIDE.toFloat() / origH.toFloat())).roundToInt()
+        }
+
+        val resized = Bitmap.createScaledBitmap(src, newW, newH, true)
+
+        // 2) Center crop: 224 x 224 from the middle
+        val x = ((resized.width - INPUT_SIZE) / 2f).roundToInt().coerceAtLeast(0)
+        val y = ((resized.height - INPUT_SIZE) / 2f).roundToInt().coerceAtLeast(0)
+
+        return Bitmap.createBitmap(resized, x, y, INPUT_SIZE, INPUT_SIZE)
+    }
+
     /** Run inference on Bitmap */
     fun run(bitmap: Bitmap): Result {
-        val resized = if (bitmap.width != INPUT_SIZE || bitmap.height != INPUT_SIZE)
-            Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
-        else bitmap
+        // Apply same Resize(256)+CenterCrop(224) as in Colab
+        val processed = preprocessBitmap(bitmap)
 
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resized, MEAN, STD)
+        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(processed, MEAN, STD)
         val outputTensor = module.forward(IValue.from(inputTensor)).toTensor()
 
         val logits = outputTensor.dataAsFloatArray
