@@ -258,7 +258,19 @@ class MainActivity : AppCompatActivity() {
         viewBinding.collectDatasetButton.visibility = View.GONE
 
         // Trigger the AR viewer
-        startActivity(Intent(this, com.developer27.ustar.ar.ArViewerActivity::class.java))
+        try {
+            val intent = Intent(
+                this,
+                com.xamera.ar.core.components.java.sharedcamera.SharedCameraActivity::class.java
+            )
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Unable to launch AR Activity: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     /* ------------------------------------------------------------------ */

@@ -86,7 +86,7 @@
             android:id="@+id/textViewVersion"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Version: 1.0 (Pre-Beta)"
+            android:text="Version: 1.0"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 
@@ -94,7 +94,7 @@
             android:id="@+id/textViewReleaseDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Release Date: TBD"
+            android:text="Release Date: December 1st 2025"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 
@@ -102,7 +102,7 @@
             android:id="@+id/textViewDevelopers"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Developers: Deniz Acikbas, Ashwin Kumar Sarvadey, Christian Nwobu, Zhalgas Tileumuratin"
+            android:text="Developers: Deniz Acikbas, Christian Nwobu, Zhalgas Tileumuratin, Ashwin Kumar Sarvadey"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 

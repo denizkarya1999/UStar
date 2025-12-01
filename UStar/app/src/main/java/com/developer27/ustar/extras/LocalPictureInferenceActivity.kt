@@ -19,6 +19,7 @@ import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.Denoising_CycleGAN
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
 import com.developer27.ustar.machinelearning.Orientation_ResNet18
+import com.xamera.ar.core.components.java.sharedcamera.SharedCameraActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -169,7 +170,10 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
         // Button: Launch AR Activity
         btnLaunchAr.setOnClickListener {
             try {
-                val intent = Intent(this, com.developer27.ustar.ar.ArViewerActivity::class.java)
+                val intent = Intent(
+                    this,
+                    com.xamera.ar.core.components.java.sharedcamera.SharedCameraActivity::class.java
+                )
                 startActivity(intent)
             } catch (e: Exception) {
                 Toast.makeText(

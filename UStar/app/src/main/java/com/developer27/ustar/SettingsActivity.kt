@@ -4,11 +4,9 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.SwitchPreference
 import com.developer27.ustar.extras.LocalPictureInferenceActivity
 import com.developer27.ustar.videoprocessing.Settings
 
