@@ -1,41 +1,48 @@
 # UStar
 
-UStar is an Android application that tracks UOID (Underwater Optical Identification) tags using the device camera, runs on-device machine learning models for distance and orientation estimation, and displays the results in both a live camera view and an ARCore overlay.
+UStar is an Android application that detects and tracks UOID (Underwater Optical Identification) tags using the device camera. UOID tags are optical markers used for underwater navigation. For example, a swimmer can pull out their phone underwater, open the UStar app, and the app will detect nearby UOID tags to show where to go and how far the destination is.
+
+The app performs on-device machine learning to estimate both distance and orientation of the tag and presents the results in real time through the live camera feed and optional ARCore overlay.
 
 ## Features
 
 ### UOID Tag Tracking
-- Detects and tracks UOID tag structures in the camera feed
-- Uses ML models to infer the relative distance to the tag
-- Uses ML models to classify the viewing orientation of the tag
-- Designed for consistent recognition of UOID tag geometry and colored positioning elements
+- Detects and tracks UOID tags, which serve as underwater navigation markers.
+- Enables swimmers and divers to understand their direction and distance to a target location by reading UOID tags placed underwater.
+- Uses ML models to infer:
+  - Relative distance to the tag
+  - Viewing orientation of the tag (e.g., North, South, East, West)
+- Designed for stable recognition of UOID tag geometry and colored reference points.
 
 ### Live Tracking
 - Real-time UOID distance estimation
 - Real-time UOID orientation estimation
-- Live camera preview
-- Options to save the current frame, stop tracking, and switch cameras
+- Continuous camera preview
+- Ability to:
+  - Save the current frame
+  - Stop/resume tracking
+  - Switch cameras
 
 ### AR Mode
-- ARCore-based overlay panel ("tablet")
-- Shows the current distance and orientation inferred from the UOID tag
-- Panel can optionally face the camera (billboard mode)
+- ARCore-based overlay panel (“tablet”)
+- Displays the current distance and orientation derived from the UOID tag
+- Optional billboard mode so the panel always faces the camera
 
 ### Local Picture Inference
-- Select an image from the device gallery
-- Run CycleGAN denoising on the image
-- Run optical ranging and orientation models on the UOID tag within the image
+- Select any image from the device gallery
+- Apply CycleGAN denoising to improve underwater clarity
+- Run optical ranging and orientation models on the UOID tag within the picture
 - View original and processed outputs
 
 ### Additional Screens
-- Settings page for accessing local inference
+- Settings page for configuration and local inference tools
 - About page with version, release date, and developer information
 
 ## Machine Learning
-- CycleGAN model for denoising UOID images
+- CycleGAN model for underwater image denoising and color correction
 - ResNet-18 model for optical ranging (distance classification)
-- ResNet-18 model for orientation guidance (direction classification)
-- Models executed on-device via PyTorch Mobile
+- ResNet-18 model for orientation classification (direction guidance)
+- All models run fully on-device through PyTorch Mobile
 
 ## Tech Stack
 - Kotlin
