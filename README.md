@@ -2,7 +2,7 @@
 
 UStar is an Android application that detects and tracks UOID (Underwater Optical Identification) tags using the device camera. UOID tags are optical markers used for underwater navigation. For example, a swimmer can pull out their phone underwater, open the UStar app, and the app will detect nearby UOID tags to show where to go and how far the destination is.
 
-The app performs on-device machine learning to estimate both distance and orientation of the tag and presents the results in real time through the live camera feed and optional ARCore overlay.
+The app performs on-device machine learning to estimate both distance and orientation of the tag and displays the results directly in an ARCore overlay in real time.
 
 ## Features
 
@@ -15,24 +15,27 @@ The app performs on-device machine learning to estimate both distance and orient
 - Designed for stable recognition of UOID tag geometry and colored reference points.
 
 ### Live Tracking
-- Real-time UOID distance estimation
-- Real-time UOID orientation estimation
-- Continuous camera preview
+- Real-time UOID distance estimation  
+- Real-time UOID orientation estimation  
+- Continuous camera preview  
+- Built-in AR overlay always active during tracking  
 - Ability to:
-  - Save the current frame
-  - Stop/resume tracking
-  - Switch cameras
+  - Save the current frame  
+  - Stop/resume tracking  
+  - Switch between cameras  
 
 ### AR Mode
-- ARCore-based overlay panel (“tablet”)
-- Displays the current distance and orientation derived from the UOID tag
-- Optional billboard mode so the panel always faces the camera
+- Always-on ARCore overlay panel (“tablet”)
+- Continuously displays:
+  - Current distance  
+  - Current orientation  
+- Panel rotates dynamically based on device movement and camera pose
 
 ### Local Picture Inference
 - Select any image from the device gallery
-- Apply CycleGAN denoising to improve underwater clarity
+- Apply CycleGAN denoising to improve underwater visibility
 - Run optical ranging and orientation models on the UOID tag within the picture
-- View original and processed outputs
+- View original and processed outputs side-by-side
 
 ### Additional Screens
 - Settings page for configuration and local inference tools
@@ -41,7 +44,7 @@ The app performs on-device machine learning to estimate both distance and orient
 ## Machine Learning
 - CycleGAN model for underwater image denoising and color correction
 - ResNet-18 model for optical ranging (distance classification)
-- ResNet-18 model for orientation classification (direction guidance)
+- ResNet-18 model for orientation classification (direction labeling)
 - All models run fully on-device through PyTorch Mobile
 
 ## Tech Stack
