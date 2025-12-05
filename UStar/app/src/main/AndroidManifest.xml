@@ -13,10 +13,12 @@
 
     <!-- Permission to write to external storage, only required for Android versions up to 28 (Android 9) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28"/>
-
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="29" />
+
+    <!-- For Android 11+ (API 30+) – All files access -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <!-- Tell the system this app requires OpenGL ES 3.2. -->
     <uses-feature android:glEsVersion="0x00030002" android:required="true" />
@@ -47,7 +49,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ar.ArViewerActivity" />
         <activity
             android:name=".extras.LocalPictureInferenceActivity"
             android:exported="false"
