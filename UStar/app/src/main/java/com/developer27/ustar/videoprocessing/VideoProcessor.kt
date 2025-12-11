@@ -4,9 +4,11 @@ package com.developer27.ustar.videoprocessing
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Environment
 import android.util.Log
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.developer27.ustar.MainActivity.Companion.currentPrediction
 import com.developer27.ustar.machinelearning.Orientation_ResNet18
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
@@ -70,17 +72,17 @@ class VideoProcessor(private val context: Context) {
             val cycleGanResult = runCycleGANDenoisingInference(src)
 
             // 3. Run OpenCV processing for Computer Vision algorithms
-            processedBitmap = runOpenCVProcessing(cycleGanResult)
+            processedBitmap = runCVProcessing(cycleGanResult)
 
             // 4. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
-            currentPrediction = runResNet18CombinedInference(src)
+            currentPrediction = runResNet18CombinedInference(processedBitmap!!)
 
             // 5. Write the full log to file (adds date + header)
             writeLogToFile()
 
             // 6. Return processed bitmap
             processedBitmap!!
-        }
+    }
 
     /** Run CycleGAN denoising inference on a given Bitmap */
     private fun runCycleGANDenoisingInference(input: Bitmap): Bitmap {
@@ -119,9 +121,9 @@ class VideoProcessor(private val context: Context) {
         return prediction
     }
 
-    /** OpenCV-based image processing */
+    /** CV-based image processing */
     // TODO: <Ashwin Kumar Sarvadey> After CycleGAN is implemented, do the necessary image processings and log predictions based on the paper.
-    private fun runOpenCVProcessing(bmp: Bitmap): Bitmap {
+    private fun runCVProcessing(bmp: Bitmap): Bitmap {
         // Initialize the bitmap
         processedBitmap = bmp
 
@@ -137,12 +139,41 @@ class VideoProcessor(private val context: Context) {
         // Log the initialization status.
         logMessage.appendLine("OpenCV Initialization Status: $isInitialized")
 
+        // Apply cropping + padding + resizing
+        processedBitmap = imageResizing(
+            src = bmp,
+            outW = 789,
+            outH = 355
+        )
+
         // TODO: <Ashwin Kumar Sarvadey> Perform necessary processing to processedBitmap and log features based on the map to LogMessage variable.
 
         // Placeholder for feature logging
         logMessage.appendLine("Test feature is logged in by OpenCV")
 
         return processedBitmap!!
+    }
+
+    private fun imageResizing(
+        src: Bitmap,
+        outW: Int,
+        outH: Int
+    ): Bitmap {
+
+        // ---- 1) Create the output canvas (fixed size) ----
+        val output = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        // ---- 2) Fill the whole background with pure black ----
+        canvas.drawARGB(255, 0, 0, 0)
+
+        // ---- 3) Center the ORIGINAL image (no crop, no resize) ----
+        val left = (outW - src.width) / 2f
+        val top  = (outH - src.height) / 2f
+
+        canvas.drawBitmap(src, left, top, null)
+
+        return output
     }
 
     /** Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt */

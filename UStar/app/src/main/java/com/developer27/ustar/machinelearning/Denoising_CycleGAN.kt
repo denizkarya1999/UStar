@@ -32,8 +32,9 @@ object Denoising_CycleGAN {
 
     /** Run stylization on a Bitmap and return the output Bitmap. */
     fun run(input: Bitmap): Bitmap {
-        // Resize input to model size
-        val resized = Bitmap.createScaledBitmap(input, IMG, IMG, true)
+
+        // Use the helper function to get a perfect 256x256 square
+        val resized = centerCropResizeToSquare(input, IMG)
 
         // Convert Bitmap -> Float32 tensor, normalize to [-1,1] via mean/std of 0.5
         val tensor = TensorImageUtils.bitmapToFloat32Tensor(
@@ -53,6 +54,32 @@ object Denoising_CycleGAN {
             floatArrayOf(0.5f, 0.5f, 0.5f),  // mean used to unnormalize
             floatArrayOf(0.5f, 0.5f, 0.5f)   // std used to unnormalize
         )
+    }
+
+    /** Resize while preserving aspect ratio, then center-crop to a square of (size x size). */
+    private fun centerCropResizeToSquare(input: Bitmap, size: Int): Bitmap {
+
+        val inW = input.width
+        val inH = input.height
+
+        // --- Step 1: Compute scale so that the *shortest side* becomes `size` ---
+        val scale = if (inW < inH) {
+            size.toFloat() / inW.toFloat()
+        } else {
+            size.toFloat() / inH.toFloat()
+        }
+
+        val scaledW = (inW * scale).toInt().coerceAtLeast(size)
+        val scaledH = (inH * scale).toInt().coerceAtLeast(size)
+
+        // --- Step 2: Resize while keeping aspect ratio ---
+        val scaled = Bitmap.createScaledBitmap(input, scaledW, scaledH, true)
+
+        // --- Step 3: Center crop the square ---
+        val cropX = ((scaledW - size) / 2).coerceAtLeast(0)
+        val cropY = ((scaledH - size) / 2).coerceAtLeast(0)
+
+        return Bitmap.createBitmap(scaled, cropX, cropY, size, size)
     }
 
     /** Ensure asset is available as a readable file; returns absolute path. */
