@@ -33,6 +33,9 @@ class VideoProcessor(private val context: Context) {
     // Global variable to hold the processed bitmap
     private var processedBitmap: Bitmap? = null
 
+    // Global variable to store second preprocessed image for Orientation Guidance and Optical Ranging Models
+    private var secondPreprocessedImage: Bitmap? = null
+
     // Global variable for combined log message
     private var logMessage: StringBuilder = StringBuilder()
 
@@ -74,13 +77,16 @@ class VideoProcessor(private val context: Context) {
             // 3. Run OpenCV processing for Computer Vision algorithms
             processedBitmap = runCVProcessing(cycleGanResult)
 
-            // 4. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
-            currentPrediction = runResNet18CombinedInference(processedBitmap!!)
+            // 4. Increase image padding to 789x355 to mimic training dataset dimensions for Orientation Guidance and Optical Ranging Models
+            secondPreprocessedImage = increaseImagePadding(src = processedBitmap!!, outW = 789, outH = 355)
 
-            // 5. Write the full log to file (adds date + header)
+            // 5. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
+            currentPrediction = runResNet18CombinedInference(secondPreprocessedImage!!)
+
+            // 6. Write the full log to file (adds date + header)
             writeLogToFile()
 
-            // 6. Return processed bitmap
+            // 7. Return processed bitmap
             processedBitmap!!
     }
 
@@ -139,13 +145,6 @@ class VideoProcessor(private val context: Context) {
         // Log the initialization status.
         logMessage.appendLine("OpenCV Initialization Status: $isInitialized")
 
-        // Apply cropping + padding + resizing
-        processedBitmap = imageResizing(
-            src = bmp,
-            outW = 789,
-            outH = 355
-        )
-
         // TODO: <Ashwin Kumar Sarvadey> Perform necessary processing to processedBitmap and log features based on the map to LogMessage variable.
 
         // Placeholder for feature logging
@@ -154,7 +153,8 @@ class VideoProcessor(private val context: Context) {
         return processedBitmap!!
     }
 
-    private fun imageResizing(
+    // Image resizing for Optical Ranging and Orientation Guidance Model Inference
+    private fun increaseImagePadding(
         src: Bitmap,
         outW: Int,
         outH: Int
@@ -167,7 +167,7 @@ class VideoProcessor(private val context: Context) {
         // ---- 2) Fill the whole background with pure black ----
         canvas.drawARGB(255, 0, 0, 0)
 
-        // ---- 3) Center the ORIGINAL image (no crop, no resize) ----
+        // ---- 3) Center the ORIGINAL image ----
         val left = (outW - src.width) / 2f
         val top  = (outH - src.height) / 2f
 
