@@ -69,10 +69,8 @@ class Orientation_ResNet18 private constructor(private val module: Module) {
     )
 
     /**
-     * Preprocess Bitmap to EXACTLY match PyTorch pipeline:
-     *
-     * transforms.Resize(256)       # shorter side = 256
-     * transforms.CenterCrop(224)   # take 224x224 from center
+     * Preprocess Bitmap to match PyTorch pipeline:
+     * Resize(256) on shorter side + CenterCrop(224)
      */
     private fun preprocessBitmap(src: Bitmap): Bitmap {
         val origW = src.width
