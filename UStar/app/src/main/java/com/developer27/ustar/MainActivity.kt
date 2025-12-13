@@ -239,9 +239,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Stop Processing                                                  */
+    /*  Stop Processing                                                   */
     /* ------------------------------------------------------------------ */
-    private fun stopProcessingAndRecording() {
+    private fun stopProcessingAndRecording(){
         isRecording = false
         isProcessing = false
 
