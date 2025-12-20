@@ -3,11 +3,16 @@ package com.developer27.ustar.machinelearning
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import org.opencv.android.Utils
 import org.pytorch.IValue
 import org.pytorch.Module
 import org.pytorch.torchvision.TensorImageUtils
 import java.io.File
 import java.io.FileOutputStream
+import org.opencv.core.Mat
+import org.opencv.core.Rect
+import org.opencv.core.Size
+import org.opencv.imgproc.Imgproc
 
 /**
  * CycleGAN runner (PyTorch Mobile).
@@ -32,54 +37,73 @@ object Denoising_CycleGAN {
 
     /** Run stylization on a Bitmap and return the output Bitmap. */
     fun run(input: Bitmap): Bitmap {
+        // Resize shortest side to 1.12×256 and center-crop to 256×256 (bicubic)
+        val pre = centerCropResizeToSquareBicubicOpenCV(input, 256, 1.12f)
 
-        // Use the helper function to get a perfect 256x256 square
-        val resized = centerCropResizeToSquare(input, 256)
-
-        // Convert Bitmap -> Float32 tensor, normalize to [-1,1] via mean/std of 0.5
+        // Convert Bitmap → Float tensor and normalize to [-1, 1]
         val tensor = TensorImageUtils.bitmapToFloat32Tensor(
-            resized,
+            pre,
             floatArrayOf(0.5f, 0.5f, 0.5f),   // mean
             floatArrayOf(0.5f, 0.5f, 0.5f)    // std
         )
 
-        // Forward pass: IValue(tensor) -> output tensor
+        // Run CycleGAN forward pass
         val outTensor = module!!.forward(IValue.from(tensor)).toTensor()
-        val outArray = outTensor.dataAsFloatArray // NCHW flattened floats
 
-        // Convert tensor floats back to ARGB_8888 Bitmap
+        // Extract NCHW float output
+        val outArray = outTensor.dataAsFloatArray
+
+        // Unnormalize and convert output tensor back to Bitmap
         return floatArrayToBitmap(
             outArray,
             IMG, IMG,
-            floatArrayOf(0.5f, 0.5f, 0.5f),  // mean used to unnormalize
-            floatArrayOf(0.5f, 0.5f, 0.5f)   // std used to unnormalize
+            floatArrayOf(0.5f, 0.5f, 0.5f),   // mean
+            floatArrayOf(0.5f, 0.5f, 0.5f)    // std
         )
     }
 
-    /** Resize while preserving aspect ratio, then center-crop to a square of (size x size). */
-    private fun centerCropResizeToSquare(input: Bitmap, size: Int): Bitmap {
+    /** Matches torchvision: Resize(short side -> 1.12*size) with bicubic, then center-crop to size x size. */
+    private fun centerCropResizeToSquareBicubicOpenCV(input: Bitmap, size: Int, scaleMult: Float = 1.12f): Bitmap {
         val inW = input.width
         val inH = input.height
+        val target = (size * scaleMult).toInt() // 287 if size=256
 
-        // Match training: Resize shortest side to 1.12 * size (≈287 for size=256)
-        val target = (size * 1.12f).toInt()
+        // scale so shortest side becomes target
+        val scale = if (inW < inH) target.toFloat() / inW.toFloat() else target.toFloat() / inH.toFloat()
+        val scaledW = (inW * scale).toInt().coerceAtLeast(size)
+        val scaledH = (inH * scale).toInt().coerceAtLeast(size)
 
-        val scale = if (inW < inH) {
-            target.toFloat() / inW.toFloat()
-        } else {
-            target.toFloat() / inH.toFloat()
-        }
+        // Bitmap -> Mat (RGBA)
+        val srcRgba = Mat()
+        Utils.bitmapToMat(input, srcRgba)
 
-        val scaledW = (inW * scale).toInt()
-        val scaledH = (inH * scale).toInt()
+        // Convert RGBA -> RGB (torchvision works on RGB)
+        val srcRgb = Mat()
+        Imgproc.cvtColor(srcRgba, srcRgb, Imgproc.COLOR_RGBA2RGB)
 
-        val scaled = Bitmap.createScaledBitmap(input, scaledW, scaledH, true)
+        // Bicubic resize (matches PIL BICUBIC / torchvision)
+        val resized = Mat()
+        Imgproc.resize(srcRgb, resized, Size(scaledW.toDouble(), scaledH.toDouble()), 0.0, 0.0, Imgproc.INTER_CUBIC)
 
-        // Then center-crop to 256×256
+        // Center crop to 256x256
         val cropX = ((scaledW - size) / 2).coerceAtLeast(0)
         val cropY = ((scaledH - size) / 2).coerceAtLeast(0)
+        val roi = Rect(cropX, cropY, size, size)
+        val cropped = Mat(resized, roi)
 
-        return Bitmap.createBitmap(scaled, cropX, cropY, size, size)
+        // Mat (RGB) -> Bitmap (ARGB_8888)
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val croppedRgba = Mat()
+        Imgproc.cvtColor(cropped, croppedRgba, Imgproc.COLOR_RGB2RGBA)
+        Utils.matToBitmap(croppedRgba, out)
+
+        // release mats
+        srcRgba.release()
+        srcRgb.release()
+        resized.release()
+        croppedRgba.release()
+
+        return out
     }
 
     /** Ensure asset is available as a readable file; returns absolute path. */
