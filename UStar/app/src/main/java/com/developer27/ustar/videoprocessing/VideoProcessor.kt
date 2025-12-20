@@ -4,11 +4,9 @@ package com.developer27.ustar.videoprocessing
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.os.Environment
 import android.util.Log
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import com.developer27.ustar.MainActivity.Companion.currentPrediction
 import com.developer27.ustar.machinelearning.Orientation_ResNet18
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
@@ -77,16 +75,13 @@ class VideoProcessor(private val context: Context) {
             // 3. Run OpenCV processing for Computer Vision algorithms
             processedBitmap = runCVProcessing(cycleGanResult)
 
-            // 4. Increase image padding to 789x355 to mimic training dataset dimensions for Orientation Guidance and Optical Ranging Models
-            secondPreprocessedImage = increaseImagePadding(src = processedBitmap!!, outW = 789, outH = 355)
+            // 4. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
+            currentPrediction = runResNet18CombinedInference(processedBitmap!!)
 
-            // 5. Run ResNet-18 inference for orientation and optical ranging (using noised image for now)
-            currentPrediction = runResNet18CombinedInference(secondPreprocessedImage!!)
-
-            // 6. Write the full log to file (adds date + header)
+            // 5. Write the full log to file (adds date + header)
             writeLogToFile()
 
-            // 7. Return processed bitmap
+            // 6. Return processed bitmap
             processedBitmap!!
     }
 
@@ -151,29 +146,6 @@ class VideoProcessor(private val context: Context) {
         logMessage.appendLine("Test feature is logged in by OpenCV")
 
         return processedBitmap!!
-    }
-
-    // Image resizing for Optical Ranging and Orientation Guidance Model Inference
-    private fun increaseImagePadding(
-        src: Bitmap,
-        outW: Int,
-        outH: Int
-    ): Bitmap {
-
-        // ---- 1) Create the output canvas (fixed size) ----
-        val output = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(output)
-
-        // ---- 2) Fill the whole background with pure black ----
-        canvas.drawARGB(255, 0, 0, 0)
-
-        // ---- 3) Center the ORIGINAL image ----
-        val left = (outW - src.width) / 2f
-        val top  = (outH - src.height) / 2f
-
-        canvas.drawBitmap(src, left, top, null)
-
-        return output
     }
 
     /** Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt */
