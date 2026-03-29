@@ -30,7 +30,7 @@ import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
 import com.developer27.ustar.machinelearning.Denoising_CycleGAN
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
-import com.developer27.ustar.machinelearning.Orientation_ResNet18
+import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
 import com.developer27.ustar.videoprocessing.VideoProcessor
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -115,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         Optical_Ranging_ResNet18.loadModel(this)
 
         // Load the ResNet-18 based orientation model on startup
-        Orientation_ResNet18.loadModel(this)
+        Orientation_Guidance_ResNet18.loadModel(this)
 
         // Tap title to open website
         viewBinding.titleContainer.setOnClickListener {

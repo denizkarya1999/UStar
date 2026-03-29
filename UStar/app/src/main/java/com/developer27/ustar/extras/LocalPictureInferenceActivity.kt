@@ -18,8 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.Denoising_CycleGAN
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
-import com.developer27.ustar.machinelearning.Orientation_ResNet18
-import com.xamera.ar.core.components.java.sharedcamera.SharedCameraActivity
+import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,7 +72,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
 
     // Lazily-loaded model references
     private var opticalModel: Optical_Ranging_ResNet18? = null
-    private var orientationModel: Orientation_ResNet18? = null
+    private var orientationModel: Orientation_Guidance_ResNet18? = null
 
     // --- Logging support (same style as VideoProcessor) ---
     private val logMessage = StringBuilder()
@@ -337,7 +336,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 if (checkOrientation.isChecked) {
                     withContext(Dispatchers.Default) {
                         if (orientationModel == null) {
-                            orientationModel = Orientation_ResNet18.loadModel(
+                            orientationModel = Orientation_Guidance_ResNet18.loadModel(
                                 this@LocalPictureInferenceActivity
                             )
                         }

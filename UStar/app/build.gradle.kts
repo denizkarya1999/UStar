@@ -47,12 +47,14 @@ android {
 
     packaging {
         jniLibs {
-            pickFirsts.add("lib/x86/libc++_shared.so")
-            pickFirsts.add("lib/x86_64/libc++_shared.so")
-            pickFirsts.add("lib/armeabi-v7a/libc++_shared.so")
-            pickFirsts.add("lib/arm64-v8a/libc++_shared.so")
-            pickFirsts.add("lib/arm64-v8a/libtensorflowlite_gpu_jni.so")
-            pickFirsts.add("lib/armeabi-v7a/libtensorflowlite_gpu_jni.so")
+            pickFirsts += setOf(
+                "lib/armeabi-v7a/libc++_shared.so",
+                "lib/arm64-v8a/libc++_shared.so",
+                "lib/x86/libc++_shared.so",
+                "lib/x86_64/libc++_shared.so",
+                "lib/arm64-v8a/libtensorflowlite_gpu_jni.so",
+                "lib/armeabi-v7a/libtensorflowlite_gpu_jni.so"
+            )
         }
     }
 
@@ -64,31 +66,22 @@ android {
 }
 
 dependencies {
-    // OpenCV
-    implementation(project(":OpenCV-4.10.0")) {
-        exclude(group = "org.bytedeco", module = "libc++_shared")
-    }
-
     // PyTorch
-    implementation("org.pytorch:pytorch_android:1.13.1") {
-        exclude(group = "org.bytedeco", module = "libc++_shared")
-    }
-    implementation("org.pytorch:pytorch_android_torchvision:1.13.1") {
-        exclude(group = "org.bytedeco", module = "libc++_shared")
-    }
+    implementation("org.pytorch:pytorch_android:1.13.1")
+    implementation("org.pytorch:pytorch_android_torchvision:1.13.1")
 
-    //implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+    // Local AAR
     implementation(files("libs/ar-app-release.aar"))
 
     implementation("androidx.games:games-activity:3.0.5")
 
-    // ML Kit, etc.
+    // ML Kit
     implementation("com.google.mlkit:vision-common:17.3.0")
 
-    // TensorFlow Lite (For GPU Utilization)
-    implementation("com.google.ai.edge.litert:litert:1.1.0") // Core TFLite runtime
-    implementation("com.google.ai.edge.litert:litert-gpu:1.1.0") // GPU acceleration
-    implementation("com.google.ai.edge.litert:litert-support:1.1.0") // Support library
+    // TensorFlow Lite
+    implementation("com.google.ai.edge.litert:litert:1.1.0")
+    implementation("com.google.ai.edge.litert:litert-gpu:1.1.0")
+    implementation("com.google.ai.edge.litert:litert-support:1.1.0")
 
     // CameraX
     val cameraxVersion = "1.2.2"
@@ -99,13 +92,13 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("androidx.camera:camera-extensions:$cameraxVersion")
 
-    // ARCore (pick a recent version)
+    // ARCore
     implementation("com.google.ar:core:1.36.0")
 
-    // Sceneform Community Fork (core + ux)
+    // Sceneform
     implementation("com.gorisse.thomas.sceneform:sceneform:1.19.6")
 
-    // Kotlin & Android core libs
+    // Android core
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
@@ -114,7 +107,7 @@ dependencies {
     // Preferences
     implementation("androidx.preference:preference-ktx:1.2.1")
 
-    //Splash screen
+    // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.0")
 
     // Testing
@@ -124,7 +117,4 @@ dependencies {
 
     // Apache Commons Math
     implementation("org.apache.commons:commons-math3:3.6.1")
-
-    // ARCore library
-    implementation("com.google.ar:core:1.36.0")
 }
