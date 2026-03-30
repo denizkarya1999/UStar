@@ -101,11 +101,11 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
 
     /** Run inference */
     fun run(bitmap: Bitmap): Result {
+        // optional: apply 360° rotation + vertical shift for augmentation (debugging purposes only).
+        //val processed_rotated = applyRandomAffineDebug(bitmap)
+
         // step 1: resize
         val processed = preprocessBitmap(bitmap)
-
-        // optional: apply 360° rotation + vertical shift for augmentation (debugging purposes only).
-        //val processed_rotated = applyRandomAffineDebug(processed)
 
         // step 2: convert Bitmap → tensor + normalize
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(processed, MEAN, STD)
