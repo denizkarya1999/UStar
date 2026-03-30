@@ -74,6 +74,34 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
         return Bitmap.createScaledBitmap(src, INPUT_WIDTH, INPUT_HEIGHT, true) // resize only
     }
 
+    /** Optional debug augmentation (Random Cropping) */
+    /** apply random zoom (debugging purposes only). */
+    private fun applyRandomZoomDebug(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+
+        // scale=(0.90, 1.10)
+        val scale = Random.nextFloat() * (1.10f - 0.90f) + 0.90f
+
+        // compute crop size (inverse of zoom)
+        val cropW = (width / scale).toInt().coerceAtMost(width)
+        val cropH = (height / scale).toInt().coerceAtMost(height)
+
+        // ratio=(1.0,1.0) → keep square
+        val size = minOf(cropW, cropH)
+
+        // random crop position
+        val maxX = width - size
+        val maxY = height - size
+        val x = if (maxX > 0) Random.nextInt(maxX) else 0
+        val y = if (maxY > 0) Random.nextInt(maxY) else 0
+
+        val cropped = Bitmap.createBitmap(bitmap, x, y, size, size)
+
+        // resize to 256x256 (size=256)
+        return Bitmap.createScaledBitmap(cropped, 256, 256, true)
+    }
+
     /** Optional debug augmentation (Rotation + vertical shift) */
     /** Equivalent to PyTorch RandomAffine(degrees=360, translate=(0.0, 0.3), fill=0) */
     private fun applyRandomAffineDebug(src: Bitmap): Bitmap {
@@ -101,8 +129,11 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
 
     /** Run inference */
     fun run(bitmap: Bitmap): Result {
+        // optional: apply random zoom (debugging purposes only).
+        //val zoomed = applyRandomZoomDebug(bitmap)
+
         // optional: apply 360° rotation + vertical shift for augmentation (debugging purposes only).
-        //val processed_rotated = applyRandomAffineDebug(bitmap)
+        //val processed_rotated = applyRandomAffineDebug(zoomed)
 
         // step 1: resize
         val processed = preprocessBitmap(bitmap)
