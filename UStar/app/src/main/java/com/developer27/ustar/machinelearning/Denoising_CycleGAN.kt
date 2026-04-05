@@ -20,7 +20,7 @@ object Denoising_CycleGAN {
         if (module == null) {
             val path = assetFilePath(context, assetName) // copy if needed
             module = Module.load(path)                   // load model
-            Log.i("Denoising_CycleGAN", "✅ Loaded model")
+            Log.i("Denoising_CycleGAN", "✅ Model loaded successfully from $assetName")
         }
     }
 

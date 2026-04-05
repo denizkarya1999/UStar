@@ -30,7 +30,7 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
             return try {
                 val filePath = assetFilePath(context, assetName) // copy if needed
                 val module = Module.load(filePath)               // load .pt model
-                Log.i("Orientation_Guidance_ResNet18", "✅ Model loaded successfully")
+                Log.i("Orientation_Guidance_ResNet18", "✅ Model loaded successfully from $assetName")
                 Orientation_Guidance_ResNet18(module)
             } catch (e: Exception) {
                 Log.e("Orientation_Guidance_ResNet18", "❌ Failed to load model: ${e.message}", e)

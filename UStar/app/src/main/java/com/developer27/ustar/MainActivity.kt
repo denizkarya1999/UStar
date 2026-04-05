@@ -113,7 +113,7 @@ class MainActivity : AppCompatActivity() {
         Denoising_CycleGAN.load(this)
 
         // Load DynaSpa Making Processor Model
-        MiniDynaSpaPreprocessor.loadModel(this)
+        MiniDynaSpaPreprocessor.load(this)
 
         // Load the ResNet-18 based optical ranging model on startup
         Optical_Ranging_ResNet18.loadModel(this)
