@@ -53,6 +53,7 @@
             android:name=".extras.LocalPictureInferenceActivity"
             android:exported="false"
             android:label="Local Picture Inference" />
+        <activity android:name=".extras.LocalPhotoInferenceDynaSpaActivity" />
         <activity android:name=".AboutUStarActivity" />
         <activity android:name=".SettingsActivity" />
         <activity

@@ -1,9 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- CycleGAN option -->
     <Preference
         android:key="pref_local_picture_inference"
-        android:title="Local Picture Inference"
-        android:summary="Run the model on a picture from your gallery."
-        android:layout="@layout/preference_list_layout"/>
+        android:title="Local Inference (CycleGAN)"
+        android:summary="Run the CycleGAN denoising model on a picture from your gallery."
+        android:layout="@layout/preference_list_layout" />
+
+    <!-- DynaSpa option -->
+    <Preference
+        android:key="pref_local_dynaspa_inference"
+        android:title="Local Inference (DynaSpa)"
+        android:summary="Run the DynaSpa preprocessing model on a picture from your gallery."
+        android:layout="@layout/preference_list_layout" />
+
 </PreferenceScreen>

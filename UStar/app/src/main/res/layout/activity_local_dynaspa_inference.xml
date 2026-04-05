@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00274C">
+
+    <LinearLayout
+        android:id="@+id/local_dynaspa_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#00274C">
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Local DynaSpa Inference"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:gravity="center_horizontal"
+            android:paddingBottom="12dp"
+            android:textColor="#FFCB05" />
+
+        <!-- Original vs Mask -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:orientation="horizontal">
+
+            <!-- Original -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Original"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:paddingBottom="4dp"
+                    android:gravity="center_horizontal"
+                    android:textColor="#FFCB05" />
+
+                <ImageView
+                    android:id="@+id/imageOriginal"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scaleType="fitCenter"
+                    android:background="#222222" />
+            </LinearLayout>
+
+            <!-- Mask -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Mask"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:paddingBottom="4dp"
+                    android:gravity="center_horizontal"
+                    android:textColor="#FFCB05" />
+
+                <ImageView
+                    android:id="@+id/imageMask"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scaleType="fitCenter"
+                    android:background="#222222" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Importance Map -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Importance Map"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:paddingTop="12dp"
+            android:gravity="center_horizontal"
+            android:textColor="#FFCB05" />
+
+        <ImageView
+            android:id="@+id/imageImportance"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:scaleType="fitCenter"
+            android:background="#222222"
+            android:layout_marginTop="4dp" />
+
+        <!-- Progress -->
+        <ProgressBar
+            android:id="@+id/inferenceProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+        <!-- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingTop="12dp">
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnSelectImage"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Choose Image"
+                android:textColor="#00274C"
+                android:background="#FFCB05" />
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnRunInference"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Run DynaSpa"
+                android:textColor="#00274C"
+                android:background="#FFCB05" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

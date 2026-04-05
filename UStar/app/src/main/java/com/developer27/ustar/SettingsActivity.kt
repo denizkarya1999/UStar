@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.developer27.ustar.extras.LocalPictureInferenceActivity
+import com.developer27.ustar.extras.LocalPhotoInferenceDynaSpaActivity
 import com.developer27.ustar.videoprocessing.Settings
 
 /**
@@ -43,14 +44,26 @@ class SettingsActivity : AppCompatActivity() {
             // Inflate the preference hierarchy from XML.
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
 
-            // Action preference: Local Picture Inference
+            // Action preference: Local Picture Inference (CycleGAN)
             val localPicturePref: Preference? =
                 findPreference("pref_local_picture_inference")
 
-            // Launch the activity listener
+            // Action preference: Local Picture Inference (DynaSpa)
+            val localDynaSpaPref: Preference? =
+                findPreference("pref_local_dynaspa_inference")
+
+            // Launch CycleGAN activity
             localPicturePref?.setOnPreferenceClickListener {
                 val ctx = requireContext()
                 val intent = Intent(ctx, LocalPictureInferenceActivity::class.java)
+                startActivity(intent)
+                true
+            }
+
+            // Launch DynaSpa activity
+            localDynaSpaPref?.setOnPreferenceClickListener {
+                val ctx = requireContext()
+                val intent = Intent(ctx, LocalPhotoInferenceDynaSpaActivity::class.java)
                 startActivity(intent)
                 true
             }
