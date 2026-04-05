@@ -60,15 +60,16 @@ android {
 
     aaptOptions {
         noCompress("pt")
+        noCompress("ptl")
         noCompress("torchscript")
         noCompress("tflite")
     }
 }
 
 dependencies {
-    // PyTorch
-    implementation("org.pytorch:pytorch_android:1.13.1")
-    implementation("org.pytorch:pytorch_android_torchvision:1.13.1")
+    // PyTorch Lite for .ptl models
+    implementation("org.pytorch:pytorch_android_lite:1.13.1")
+    implementation("org.pytorch:pytorch_android_torchvision_lite:1.13.1")
 
     // Local AAR
     implementation(files("libs/ar-app-release.aar"))
