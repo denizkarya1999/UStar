@@ -22,6 +22,7 @@ import java.util.Locale
 
 /* -----------------------------  Settings  ----------------------------- */
 object Settings {
+    var selectedDenoiser: String = "cyclegan"
 }
 
 /** VideoProcessor */
@@ -57,17 +58,44 @@ class VideoProcessor(private val context: Context) {
         // 1. Reset the logMessage variable for logging
         logMessage = StringBuilder()
 
-        // 2. Run CycleGAN based denoising inference first
-        val cycleGanResult = runCycleGANDenoisingInference(src)
+        // 2. Run the selected denoising model first
+        val denoisedResult = when (Settings.selectedDenoiser.lowercase()) {
+            "dynaspa" -> runDynaSpaDenoisingInference(src)
+            else -> runCycleGANDenoisingInference(src)
+        }
 
         // 3. Run ResNet-18 inference for orientation and optical ranging
-        currentPrediction = runResNet18CombinedInference(cycleGanResult)
+        currentPrediction = runResNet18CombinedInference(denoisedResult)
 
         // 4. Write the full log to file
         writeLogToFile()
 
         // 5. Return processed bitmap
-        cycleGanResult
+        denoisedResult
+    }
+
+    /** Run DynaSpa denoising inference on a given Bitmap */
+    private fun runDynaSpaDenoisingInference(input: Bitmap): Bitmap {
+        return try {
+            val result = com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.run(context, input)
+
+            if (result != null) {
+                com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.applyHardMaskToOriginal(
+                    original = input,
+                    maskTensor = result.mask,
+                    maskRate = 0.06f
+                )
+            } else {
+                input
+            }
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "DynaSpa based denoising failed: ${e.message}",
+                Toast.LENGTH_SHORT
+            ).show()
+            input
+        }
     }
 
     /** Run CycleGAN denoising inference on a given Bitmap */

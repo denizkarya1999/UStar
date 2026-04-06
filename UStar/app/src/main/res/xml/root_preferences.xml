@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <ListPreference
+        android:key="pref_denoiser_type"
+        android:title="Denoising Model"
+        android:summary="Choose whether to use CycleGAN or DynaSpa for denoising."
+        android:entries="@array/denoiser_entries"
+        android:entryValues="@array/denoiser_values"
+        android:defaultValue="cyclegan"
+        android:dialogTitle="Select Denoising Model"
+        android:layout="@layout/preference_list_layout" />
+
     <!-- CycleGAN option -->
     <Preference
         android:key="pref_local_picture_inference"
