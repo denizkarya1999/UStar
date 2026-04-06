@@ -18,12 +18,14 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
     private lateinit var imageOriginal: ImageView
     private lateinit var imageMask: ImageView
-    private lateinit var imageImportance: ImageView
     private lateinit var selectButton: Button
     private lateinit var runButton: Button
     private lateinit var progressBar: ProgressBar
 
     private var selectedBitmap: Bitmap? = null
+
+    // Adjust this to control how much of the image is kept
+    private val maskRate = 0.06f
 
     // Pick one image from gallery
     private val pickImageLauncher =
@@ -34,7 +36,6 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                     selectedBitmap = bitmap
                     imageOriginal.setImageBitmap(bitmap)
                     imageMask.setImageDrawable(null)
-                    imageImportance.setImageDrawable(null)
                 } else {
                     Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
                 }
@@ -47,12 +48,11 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
         imageOriginal = findViewById(R.id.imageOriginal)
         imageMask = findViewById(R.id.imageMask)
-        imageImportance = findViewById(R.id.imageImportance)
         selectButton = findViewById(R.id.btnSelectImage)
         runButton = findViewById(R.id.btnRunInference)
         progressBar = findViewById(R.id.inferenceProgress)
 
-        // Load the model once
+        // Loads UStar_MiniDynaSpa_Denoising.pt
         MiniDynaSpaPreprocessor.load(this)
 
         selectButton.setOnClickListener {
@@ -84,20 +84,13 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                             return@runOnUiThread
                         }
 
-                        // Use the corrected RGB-friendly masked image
-                        val maskedBitmap =
-                            MiniDynaSpaPreprocessor.applyMaskToOriginal(bitmap, result.mask)
-
-                        // Show importance map at original image size
-                        val importanceBitmap =
-                            MiniDynaSpaPreprocessor.importanceMapToBitmap(
-                                result.importanceMap,
-                                targetWidth = bitmap.width,
-                                targetHeight = bitmap.height
-                            )
+                        val maskedBitmap = MiniDynaSpaPreprocessor.applyHardMaskToOriginal(
+                            original = bitmap,
+                            maskTensor = result.mask,
+                            maskRate = maskRate
+                        )
 
                         imageMask.setImageBitmap(maskedBitmap)
-                        imageImportance.setImageBitmap(importanceBitmap)
 
                         Toast.makeText(this, "DynaSpa inference complete", Toast.LENGTH_SHORT).show()
                     }
@@ -114,7 +107,6 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
         }
     }
 
-    // Convert URI to bitmap safely
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
             contentResolver.openInputStream(uri)?.use { input ->
