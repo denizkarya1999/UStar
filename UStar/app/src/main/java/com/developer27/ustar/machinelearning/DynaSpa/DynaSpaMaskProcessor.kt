@@ -1,4 +1,4 @@
-package com.developer27.ustar.machinelearning.Dynaspa
+package com.developer27.ustar.machinelearning.DynaSpa
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
