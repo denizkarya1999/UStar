@@ -13,7 +13,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.developer27.ustar.R
-import com.developer27.ustar.machinelearning.dynaspa.DynaSpaMaskProcessor
+import com.developer27.ustar.machinelearning.Dynaspa.DynaSpaMaskProcessor
 import com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor
 
 class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
