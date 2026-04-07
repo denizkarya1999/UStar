@@ -81,9 +81,7 @@ class VideoProcessor(private val context: Context) {
 
             if (result != null) {
                 com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
-                    featureMapTensor = result.featureMap,
-                    targetWidth = input.width,
-                    targetHeight = input.height
+                    featureMapTensor = result.featureMap
                 )
             } else {
                 input

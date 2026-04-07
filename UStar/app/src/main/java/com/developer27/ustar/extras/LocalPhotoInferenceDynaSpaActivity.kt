@@ -19,6 +19,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
     private lateinit var imageOriginal: ImageView
     private lateinit var imageMask: ImageView
+    private lateinit var imageBoxMask: ImageView
     private lateinit var predictionLabel: TextView
     private lateinit var selectButton: Button
     private lateinit var runButton: Button
@@ -35,6 +36,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                     selectedBitmap = bitmap
                     imageOriginal.setImageBitmap(bitmap)
                     imageMask.setImageDrawable(null)
+                    imageBoxMask.setImageDrawable(null)
                     predictionLabel.text = "Prediction: No result yet"
                 } else {
                     Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
@@ -48,6 +50,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
         imageOriginal = findViewById(R.id.imageOriginal)
         imageMask = findViewById(R.id.imageMask)
+        imageBoxMask = findViewById(R.id.imageBoxMask)
         predictionLabel = findViewById(R.id.predictionLabel)
         selectButton = findViewById(R.id.btnSelectImage)
         runButton = findViewById(R.id.btnRunInference)
@@ -67,7 +70,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Update UI while inference is running
+            // Update UI during inference
             progressBar.visibility = View.VISIBLE
             runButton.isEnabled = false
             selectButton.isEnabled = false
@@ -89,24 +92,29 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                             return@runOnUiThread
                         }
 
-                        // Show feature map
+                        // Show feature-map heatmap
                         val featureMapBitmap =
                             MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
-                                featureMapTensor = result.featureMap,
-                                targetWidth = bitmap.width,
-                                targetHeight = bitmap.height
+                                featureMapTensor = result.featureMap
                             )
 
                         imageMask.setImageBitmap(featureMapBitmap)
 
-                        // Store probabilities
-                        val probs = result.probabilities
+                        // Show bounding-box masked cropped image
+                        val boxMaskedBitmap =
+                            MiniDynaSpaPreprocessor.featureMapToBoundingBoxMaskedBitmap(
+                                processedBitmap = result.processedBitmap,
+                                featureMapTensor = result.featureMap,
+                                thresholdRatio = 0.70f
+                            )
 
-                        // Ensure 2 classes
+                        imageBoxMask.setImageBitmap(boxMaskedBitmap)
+
+                        // Show both class probabilities
+                        val probs = result.probabilities
                         val prob0 = if (probs.size > 0) probs[0] else 0f
                         val prob1 = if (probs.size > 1) probs[1] else 0f
 
-                        // Show final prediction text
                         predictionLabel.text =
                             "No UOID tag: ${String.format("%.3f", prob0)}\n" +
                                     "UOID tag present: ${String.format("%.3f", prob1)}"
