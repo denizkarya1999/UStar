@@ -20,6 +20,9 @@ object MiniDynaSpaPreprocessor {
     private const val INPUT_SIZE = 224
 
     // Hard-coded class labels
+    const val CLASS_NO_UOID = 0
+    const val CLASS_UOID_PRESENT = 1
+
     private val CLASS_LABELS = arrayOf(
         "No UOID Tag",
         "UOID Tag Present"
@@ -123,12 +126,26 @@ object MiniDynaSpaPreprocessor {
         return bitmap
     }
 
+    fun shouldShowBoundingBox(predictedClass: Int): Boolean {
+        return predictedClass == CLASS_UOID_PRESENT
+    }
+
     // Create bounding-box masked bitmap from feature-map intensity
     fun featureMapToBoundingBoxMaskedBitmap(
         processedBitmap: Bitmap,
         featureMapTensor: Tensor,
+        predictedClass: Int,
         thresholdRatio: Float = 0.70f
     ): Bitmap {
+        // Return black image if UOID tag is not predicted
+        if (!shouldShowBoundingBox(predictedClass)) {
+            return Bitmap.createBitmap(
+                processedBitmap.width,
+                processedBitmap.height,
+                Bitmap.Config.ARGB_8888
+            ).apply { eraseColor(Color.BLACK) }
+        }
+
         val box = extractBoundingBoxFromFeatureMap(
             featureMapTensor = featureMapTensor,
             outputWidth = processedBitmap.width,

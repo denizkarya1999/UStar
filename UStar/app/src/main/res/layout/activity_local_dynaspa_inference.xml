@@ -23,6 +23,7 @@
             android:paddingBottom="12dp"
             android:textColor="#FFCB05" />
 
+        <!-- First Row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="220dp"
@@ -78,13 +79,20 @@
                     android:scaleType="fitCenter"
                     android:background="#222222" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Second Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="8dp">
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -98,6 +106,32 @@
 
                 <ImageView
                     android:id="@+id/imageBoxMask"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scaleType="fitCenter"
+                    android:background="#222222" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="DynaSpa"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:paddingBottom="4dp"
+                    android:gravity="center_horizontal"
+                    android:textColor="#FFCB05" />
+
+                <ImageView
+                    android:id="@+id/imageDynaSpa"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1"

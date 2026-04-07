@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.developer27.ustar.R
+import com.developer27.ustar.machinelearning.dynaspa.DynaSpaMaskProcessor
 import com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor
 
 class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
@@ -20,6 +21,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
     private lateinit var imageOriginal: ImageView
     private lateinit var imageMask: ImageView
     private lateinit var imageBoxMask: ImageView
+    private lateinit var imageDynaSpa: ImageView
     private lateinit var predictionLabel: TextView
     private lateinit var selectButton: Button
     private lateinit var runButton: Button
@@ -37,6 +39,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                     imageOriginal.setImageBitmap(bitmap)
                     imageMask.setImageDrawable(null)
                     imageBoxMask.setImageDrawable(null)
+                    imageDynaSpa.setImageDrawable(null)
                     predictionLabel.text = "Prediction: No result yet"
                 } else {
                     Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
@@ -51,6 +54,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
         imageOriginal = findViewById(R.id.imageOriginal)
         imageMask = findViewById(R.id.imageMask)
         imageBoxMask = findViewById(R.id.imageBoxMask)
+        imageDynaSpa = findViewById(R.id.imageDynaSpa)
         predictionLabel = findViewById(R.id.predictionLabel)
         selectButton = findViewById(R.id.btnSelectImage)
         runButton = findViewById(R.id.btnRunInference)
@@ -101,14 +105,37 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                         imageMask.setImageBitmap(featureMapBitmap)
 
                         // Show bounding-box masked cropped image
+                        val box = MiniDynaSpaPreprocessor.extractBoundingBoxFromFeatureMap(
+                            featureMapTensor = result.featureMap,
+                            outputWidth = result.processedBitmap.width,
+                            outputHeight = result.processedBitmap.height,
+                            thresholdRatio = 0.70f
+                        )
+
                         val boxMaskedBitmap =
                             MiniDynaSpaPreprocessor.featureMapToBoundingBoxMaskedBitmap(
                                 processedBitmap = result.processedBitmap,
                                 featureMapTensor = result.featureMap,
+                                predictedClass = result.predictedClass,
                                 thresholdRatio = 0.70f
                             )
 
                         imageBoxMask.setImageBitmap(boxMaskedBitmap)
+
+                        val dynaSpaProcessedBitmap = if (MiniDynaSpaPreprocessor.shouldShowBoundingBox(result.predictedClass)) {
+                            DynaSpaMaskProcessor.processBoundingBox(
+                                source = result.processedBitmap,
+                                boundingBox = box
+                            )
+                        } else {
+                            Bitmap.createBitmap(
+                                result.processedBitmap.width,
+                                result.processedBitmap.height,
+                                Bitmap.Config.ARGB_8888
+                            ).apply { eraseColor(android.graphics.Color.BLACK) }
+                        }
+
+                        imageDynaSpa.setImageBitmap(dynaSpaProcessedBitmap)
 
                         // Show both class probabilities
                         val probs = result.probabilities
