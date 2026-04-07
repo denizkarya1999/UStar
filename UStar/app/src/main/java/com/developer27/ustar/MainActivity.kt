@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import org.opencv.android.OpenCVLoader
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.BitmapDrawable
@@ -108,6 +109,13 @@ class MainActivity : AppCompatActivity() {
         cameraHelper = CameraHelper(this, viewBinding)
         videoProcessor = VideoProcessor(this)
         viewBinding.processedFrameView.visibility = View.GONE
+
+        // Load OpenCV libraries
+        if (OpenCVLoader.initDebug()) {
+            Log.i("OpenCV", "OpenCV loaded successfully")
+        } else {
+            Log.e("OpenCV", "OpenCV load failed")
+        }
 
         // Load the CycleGAN based denoising model on startup
         Denoising_CycleGAN.load(this)

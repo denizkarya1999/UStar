@@ -72,7 +72,6 @@ dependencies {
 
     // Local AAR
     implementation(files("libs/ar-app-release.aar"))
-
     implementation("androidx.games:games-activity:3.0.5")
 
     // ML Kit
@@ -82,6 +81,9 @@ dependencies {
     implementation("com.google.ai.edge.litert:litert:1.1.0")
     implementation("com.google.ai.edge.litert:litert-gpu:1.1.0")
     implementation("com.google.ai.edge.litert:litert-support:1.1.0")
+
+    // OpenCV
+    implementation("com.quickbirdstudios:opencv:4.5.3.0")
 
     // CameraX
     val cameraxVersion = "1.2.2"
