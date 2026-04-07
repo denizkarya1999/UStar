@@ -10,13 +10,19 @@ import org.pytorch.Tensor
 import org.pytorch.torchvision.TensorImageUtils
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.max
+import kotlin.math.exp
 
 object MiniDynaSpaPreprocessor {
 
-    // Changed from .ptl to .pt
-    private const val MODEL_NAME = "UStar_MiniDynaSpa_Denoising.pt"
+    // TorchScript model that returns (logits, feature_map)
+    private const val MODEL_NAME = "UStar_DynaSpa_ResNet50_UOID_Tag_Detection_Mobile.pt"
     private const val INPUT_SIZE = 224
+
+    // Hard-coded class labels
+    private val CLASS_LABELS = arrayOf(
+        "No UOID tag",
+        "UOID tag present"
+    )
 
     private var module: Module? = null
 
@@ -36,168 +42,163 @@ object MiniDynaSpaPreprocessor {
         if (module == null) load(context)
         val model = module ?: return null
 
+        // Resize input for model
         val processed = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
 
+        // Convert bitmap to tensor
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(
             processed,
             normMean,
             normStd
         )
 
+        // Model output: (logits, feature_map)
         val outputTuple = model.forward(IValue.from(inputTensor)).toTuple()
 
-        val featuresTensor = outputTuple[0].toTensor()
-        val maskedFeaturesTensor = outputTuple[1].toTensor()
-        val maskTensor = outputTuple[2].toTensor()
-        val importanceTensor = outputTuple[3].toTensor()
+        val logitsTensor = outputTuple[0].toTensor()
+        val featureMapTensor = outputTuple[1].toTensor()
+
+        val logits = logitsTensor.dataAsFloatArray
+        if (logits.isEmpty()) return null
+
+        // Make prediction from logits
+        val probabilities = softmax(logits)
+        val predictedClass = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
+        val confidence = probabilities[predictedClass]
+
+        // Resolve readable label from hard-coded labels
+        val predictedLabel = getLabelForClass(predictedClass)
 
         return Result(
-            features = featuresTensor,
-            maskedFeatures = maskedFeaturesTensor,
-            mask = maskTensor,
-            importanceMap = importanceTensor
+            logits = logitsTensor,
+            featureMap = featureMapTensor,
+            predictedClass = predictedClass,
+            predictedLabel = predictedLabel,
+            confidence = confidence,
+            probabilities = probabilities
         )
     }
 
-    /**
-     * Hard black-background masking like Colab.
-     * Keeps only the top maskRate strongest regions.
-     *
-     * Example:
-     * maskRate = 0.06f keeps about top 6% strongest mask pixels.
-     */
-    fun applyHardMaskToOriginal(
-        original: Bitmap,
-        maskTensor: Tensor,
-        maskRate: Float = 0.06f
+    // Return label from class id
+    fun getLabelForClass(classId: Int): String {
+        return if (classId in CLASS_LABELS.indices) {
+            CLASS_LABELS[classId]
+        } else {
+            "Unknown"
+        }
+    }
+
+    fun featureMapToHeatmapBitmap(
+        featureMapTensor: Tensor,
+        targetWidth: Int? = null,
+        targetHeight: Int? = null
     ): Bitmap {
-        val binaryMaskBitmap = hardMaskTensorToBitmap(
-            maskTensor = maskTensor,
-            targetWidth = original.width,
-            targetHeight = original.height,
-            maskRate = maskRate
-        )
+        val shape = featureMapTensor.shape()
 
-        val output = Bitmap.createBitmap(
-            original.width,
-            original.height,
-            Bitmap.Config.ARGB_8888
-        )
-
-        val originalPixels = IntArray(original.width * original.height)
-        val maskPixels = IntArray(original.width * original.height)
-        val outPixels = IntArray(original.width * original.height)
-
-        original.getPixels(
-            originalPixels,
-            0,
-            original.width,
-            0,
-            0,
-            original.width,
-            original.height
-        )
-
-        binaryMaskBitmap.getPixels(
-            maskPixels,
-            0,
-            original.width,
-            0,
-            0,
-            original.width,
-            original.height
-        )
-
-        for (i in originalPixels.indices) {
-            val pixel = originalPixels[i]
-            val maskGray = maskPixels[i] and 0xFF
-            val keep = if (maskGray > 0) 1f else 0f
-
-            val r = ((pixel shr 16) and 0xFF) * keep
-            val g = ((pixel shr 8) and 0xFF) * keep
-            val b = (pixel and 0xFF) * keep
-
-            outPixels[i] = (0xFF shl 24) or
-                    (r.toInt().coerceIn(0, 255) shl 16) or
-                    (g.toInt().coerceIn(0, 255) shl 8) or
-                    b.toInt().coerceIn(0, 255)
+        // Expected shape: [1, C, H, W]
+        if (shape.size != 4) {
+            throw IllegalArgumentException(
+                "Expected feature map shape [1, C, H, W], got ${shape.contentToString()}"
+            )
         }
 
-        output.setPixels(
-            outPixels,
-            0,
-            original.width,
-            0,
-            0,
-            original.width,
-            original.height
-        )
+        val channels = shape[1].toInt()
+        val height = shape[2].toInt()
+        val width = shape[3].toInt()
+        val data = featureMapTensor.dataAsFloatArray
 
-        return output
-    }
+        val spatialMap = FloatArray(height * width)
 
-    /**
-     * Converts mask tensor to a hard binary bitmap using top-k masking.
-     * This matches the Colab logic more closely.
-     */
-    fun hardMaskTensorToBitmap(
-        maskTensor: Tensor,
-        targetWidth: Int? = null,
-        targetHeight: Int? = null,
-        maskRate: Float = 0.06f
-    ): Bitmap {
-        val shape = maskTensor.shape()
-        val h = shape[2].toInt()
-        val w = shape[3].toInt()
-        val data = maskTensor.dataAsFloatArray.copyOf()
+        // Average channels into one 2D map
+        for (c in 0 until channels) {
+            val channelOffset = c * height * width
+            for (i in 0 until height * width) {
+                spatialMap[i] += data[channelOffset + i]
+            }
+        }
 
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        for (i in spatialMap.indices) {
+            spatialMap[i] /= channels.toFloat()
+        }
 
         // Normalize to [0, 1]
         var minVal = Float.MAX_VALUE
         var maxVal = -Float.MAX_VALUE
-        for (v in data) {
+        for (v in spatialMap) {
             if (v < minVal) minVal = v
             if (v > maxVal) maxVal = v
         }
+
         val range = if (maxVal - minVal < 1e-8f) 1f else (maxVal - minVal)
 
-        val normalized = FloatArray(data.size)
-        for (i in data.indices) {
-            normalized[i] = ((data[i] - minVal) / range).coerceIn(0f, 1f)
-        }
-
-        // Top-k threshold
-        val safeMaskRate = maskRate.coerceIn(0f, 1f)
-        val total = normalized.size
-        val k = max(1, (total * safeMaskRate).toInt())
-
-        val sorted = normalized.copyOf()
-        sorted.sort()
-        val threshold = sorted[max(0, total - k)]
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
         var index = 0
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                val keep = normalized[index] >= threshold
-                val value = if (keep) 255 else 0
-                bitmap.setPixel(x, y, Color.rgb(value, value, value))
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val value = ((spatialMap[index] - minVal) / range).coerceIn(0f, 1f)
+                bitmap.setPixel(x, y, heatColor(value))
                 index++
             }
         }
 
+        // Resize back if needed
         return if (targetWidth != null && targetHeight != null) {
-            Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, false)
+            Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
         } else {
             bitmap
         }
     }
 
+    private fun softmax(logits: FloatArray): FloatArray {
+        val maxLogit = logits.maxOrNull() ?: 0f
+        val exps = FloatArray(logits.size)
+        var sum = 0f
+
+        for (i in logits.indices) {
+            exps[i] = exp((logits[i] - maxLogit).toDouble()).toFloat()
+            sum += exps[i]
+        }
+
+        if (sum <= 0f) return FloatArray(logits.size) { 0f }
+
+        for (i in exps.indices) {
+            exps[i] /= sum
+        }
+
+        return exps
+    }
+
+    private fun heatColor(value: Float): Int {
+        val v = value.coerceIn(0f, 1f)
+
+        return when {
+            v < 0.25f -> {
+                val t = v / 0.25f
+                Color.rgb(0, (255 * t).toInt(), 255)
+            }
+            v < 0.5f -> {
+                val t = (v - 0.25f) / 0.25f
+                Color.rgb(0, 255, (255 * (1f - t)).toInt())
+            }
+            v < 0.75f -> {
+                val t = (v - 0.5f) / 0.25f
+                Color.rgb((255 * t).toInt(), 255, 0)
+            }
+            else -> {
+                val t = (v - 0.75f) / 0.25f
+                Color.rgb(255, (255 * (1f - t)).toInt(), 0)
+            }
+        }
+    }
+
     data class Result(
-        val features: Tensor,
-        val maskedFeatures: Tensor,
-        val mask: Tensor,
-        val importanceMap: Tensor
+        val logits: Tensor,
+        val featureMap: Tensor,
+        val predictedClass: Int,
+        val predictedLabel: String,
+        val confidence: Float,
+        val probabilities: FloatArray
     )
 
     private fun assetFilePath(context: Context, assetName: String): String {

@@ -74,16 +74,16 @@ class VideoProcessor(private val context: Context) {
         denoisedResult
     }
 
-    /** Run DynaSpa denoising inference on a given Bitmap */
+    /** Run tag detection model and return its feature-map heatmap as a Bitmap */
     private fun runDynaSpaDenoisingInference(input: Bitmap): Bitmap {
         return try {
             val result = com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.run(context, input)
 
             if (result != null) {
-                com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.applyHardMaskToOriginal(
-                    original = input,
-                    maskTensor = result.mask,
-                    maskRate = 0.06f
+                com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
+                    featureMapTensor = result.featureMap,
+                    targetWidth = input.width,
+                    targetHeight = input.height
                 )
             } else {
                 input
@@ -91,7 +91,7 @@ class VideoProcessor(private val context: Context) {
         } catch (e: Exception) {
             Toast.makeText(
                 context,
-                "DynaSpa based denoising failed: ${e.message}",
+                "Tag detection feature-map generation failed: ${e.message}",
                 Toast.LENGTH_SHORT
             ).show()
             input

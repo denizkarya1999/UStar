@@ -63,7 +63,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Hard Mask"
+                    android:text="Feature Map"
                     android:textStyle="bold"
                     android:textSize="14sp"
                     android:paddingBottom="4dp"
@@ -79,6 +79,17 @@
                     android:background="#222222" />
             </LinearLayout>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/predictionLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Prediction: No result yet"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:gravity="center_horizontal"
+            android:textColor="#FFCB05" />
 
         <ProgressBar
             android:id="@+id/inferenceProgress"
