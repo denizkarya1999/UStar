@@ -23,7 +23,7 @@
             android:paddingBottom="12dp"
             android:textColor="#FFCB05" />
 
-        <!-- First Row -->
+        <!-- First Row: Original and Model Input -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="220dp"
@@ -64,6 +64,39 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:text="Model Input (Crop)"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:paddingBottom="4dp"
+                    android:gravity="center_horizontal"
+                    android:textColor="#FFCB05" />
+
+                <ImageView
+                    android:id="@+id/imageModelInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scaleType="fitCenter"
+                    android:background="#222222" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Second Row: Feature Map and Box Mask -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
                     android:text="Feature Map"
                     android:textStyle="bold"
                     android:textSize="14sp"
@@ -79,20 +112,13 @@
                     android:scaleType="fitCenter"
                     android:background="#222222" />
             </LinearLayout>
-        </LinearLayout>
-
-        <!-- Second Row -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="220dp"
-            android:orientation="horizontal"
-            android:layout_marginTop="8dp">
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -112,13 +138,21 @@
                     android:scaleType="fitCenter"
                     android:background="#222222" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Third Row: DynaSpa -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center_horizontal">
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="8dp">
+                android:layout_weight="0.5"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="match_parent"

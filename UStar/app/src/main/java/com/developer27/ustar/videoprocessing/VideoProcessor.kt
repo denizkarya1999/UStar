@@ -8,6 +8,7 @@ import android.os.Environment
 import android.util.Log
 import android.widget.Toast
 import com.developer27.ustar.MainActivity.Companion.currentPrediction
+import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
 import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
 import kotlinx.coroutines.CoroutineScope
@@ -74,22 +75,38 @@ class VideoProcessor(private val context: Context) {
         denoisedResult
     }
 
-    /** Run tag detection model and return its feature-map heatmap as a Bitmap */
+    /** Run tag detection model and return its DynaSpa masked result as a Bitmap */
     private fun runDynaSpaDenoisingInference(input: Bitmap): Bitmap {
         return try {
-            val result = com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.run(context, input)
+            val result = MiniDynaSpaPreprocessor.run(context, input)
 
             if (result != null) {
-                com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
-                    featureMapTensor = result.featureMap
+                val box = MiniDynaSpaPreprocessor.extractBoundingBoxFromFeatureMap(
+                    featureMapTensor = result.featureMap,
+                    outputWidth = result.processedBitmap.width,
+                    outputHeight = result.processedBitmap.height,
+                    thresholdRatio = 0.70f
                 )
+
+                if (MiniDynaSpaPreprocessor.shouldShowBoundingBox(result.predictedClass)) {
+                    com.developer27.ustar.machinelearning.DynaSpa.DynaSpaMaskProcessor.processBoundingBox(
+                        source = result.processedBitmap,
+                        boundingBox = box
+                    )
+                } else {
+                    Bitmap.createBitmap(
+                        result.processedBitmap.width,
+                        result.processedBitmap.height,
+                        Bitmap.Config.ARGB_8888
+                    ).apply { eraseColor(android.graphics.Color.BLACK) }
+                }
             } else {
                 input
             }
         } catch (e: Exception) {
             Toast.makeText(
                 context,
-                "Tag detection feature-map generation failed: ${e.message}",
+                "Tag detection DynaSpa masking failed: ${e.message}",
                 Toast.LENGTH_SHORT
             ).show()
             input

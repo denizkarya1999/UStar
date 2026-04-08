@@ -14,11 +14,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.DynaSpa.DynaSpaMaskProcessor
-import com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor
+import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
 
 class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
     private lateinit var imageOriginal: ImageView
+    private lateinit var imageModelInput: ImageView
     private lateinit var imageMask: ImageView
     private lateinit var imageBoxMask: ImageView
     private lateinit var imageDynaSpa: ImageView
@@ -37,6 +38,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                 if (bitmap != null) {
                     selectedBitmap = bitmap
                     imageOriginal.setImageBitmap(bitmap)
+                    imageModelInput.setImageDrawable(null)
                     imageMask.setImageDrawable(null)
                     imageBoxMask.setImageDrawable(null)
                     imageDynaSpa.setImageDrawable(null)
@@ -52,6 +54,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
         setContentView(R.layout.activity_local_dynaspa_inference)
 
         imageOriginal = findViewById(R.id.imageOriginal)
+        imageModelInput = findViewById(R.id.imageModelInput)
         imageMask = findViewById(R.id.imageMask)
         imageBoxMask = findViewById(R.id.imageBoxMask)
         imageDynaSpa = findViewById(R.id.imageDynaSpa)
@@ -95,6 +98,9 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                             Toast.makeText(this, "Inference failed", Toast.LENGTH_SHORT).show()
                             return@runOnUiThread
                         }
+
+                        // Show model input (the 1024 crop resized to 224)
+                        imageModelInput.setImageBitmap(result.processedBitmap)
 
                         // Show feature-map heatmap
                         val featureMapBitmap =

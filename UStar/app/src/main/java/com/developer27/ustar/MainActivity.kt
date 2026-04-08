@@ -30,7 +30,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
 import com.developer27.ustar.machinelearning.Denoising_CycleGAN
-import com.developer27.ustar.machinelearning.MiniDynaSpaPreprocessor
+import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
 import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
 import com.developer27.ustar.videoprocessing.VideoProcessor

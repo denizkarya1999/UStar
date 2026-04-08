@@ -1,4 +1,4 @@
-package com.developer27.ustar.machinelearning
+package com.developer27.ustar.machinelearning.DynaSpa
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -82,9 +82,24 @@ object MiniDynaSpaPreprocessor {
         )
     }
 
-    // Resize image directly to model input size (224x224)
+    // Resize image to model input size (224x224)
+    // If input is larger than 256x256, crop 1024x1024 (or max available square) from middle first, then resize to 224x224
     private fun resize(src: Bitmap): Bitmap {
-        return Bitmap.createScaledBitmap(src, INPUT_SIZE, INPUT_SIZE, true)
+        val targetInputSize = 224
+        
+        return if (src.width > 256 || src.height > 256) {
+            val intermediateCropSize = 1024
+            val cropSize = minOf(minOf(src.width, src.height), intermediateCropSize)
+            
+            val left = (src.width - cropSize) / 2
+            val top = (src.height - cropSize) / 2
+            
+            val cropped = Bitmap.createBitmap(src, left, top, cropSize, cropSize)
+            Bitmap.createScaledBitmap(cropped, targetInputSize, targetInputSize, true)
+        } else {
+            // If 256x256 or smaller, just resize
+            Bitmap.createScaledBitmap(src, targetInputSize, targetInputSize, true)
+        }
     }
 
     // Return label from class id
@@ -135,7 +150,7 @@ object MiniDynaSpaPreprocessor {
         processedBitmap: Bitmap,
         featureMapTensor: Tensor,
         predictedClass: Int,
-        thresholdRatio: Float = 0.70f
+        thresholdRatio: Float = 0.35f
     ): Bitmap {
         // Return black image if UOID tag is not predicted
         if (!shouldShowBoundingBox(predictedClass)) {
