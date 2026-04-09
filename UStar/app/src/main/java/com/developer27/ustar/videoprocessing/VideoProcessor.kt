@@ -84,8 +84,7 @@ class VideoProcessor(private val context: Context) {
                 val box = MiniDynaSpaPreprocessor.extractBoundingBoxFromFeatureMap(
                     featureMapTensor = result.featureMap,
                     outputWidth = result.processedBitmap.width,
-                    outputHeight = result.processedBitmap.height,
-                    thresholdRatio = 0.70f
+                    outputHeight = result.processedBitmap.height
                 )
 
                 if (MiniDynaSpaPreprocessor.shouldShowBoundingBox(result.predictedClass)) {

@@ -19,6 +19,10 @@ object MiniDynaSpaPreprocessor {
     private const val MODEL_NAME = "UStar_DynaSpa_ResNet50_UOID_Tag_Detection_Mobile.pt"
     private const val INPUT_SIZE = 224
 
+    // Sensitivity to "heat" for bounding box extraction (0.0 to 1.0)
+    // Lower = larger box, higher = tighter box
+    var globalThresholdRatio = 0.70f
+
     // Hard-coded class labels
     const val CLASS_NO_UOID = 0
     const val CLASS_UOID_PRESENT = 1
@@ -150,7 +154,7 @@ object MiniDynaSpaPreprocessor {
         processedBitmap: Bitmap,
         featureMapTensor: Tensor,
         predictedClass: Int,
-        thresholdRatio: Float = 0.35f
+        thresholdRatio: Float = globalThresholdRatio
     ): Bitmap {
         // Return black image if UOID tag is not predicted
         if (!shouldShowBoundingBox(predictedClass)) {
@@ -217,7 +221,7 @@ object MiniDynaSpaPreprocessor {
         featureMapTensor: Tensor,
         outputWidth: Int,
         outputHeight: Int,
-        thresholdRatio: Float = 0.42f
+        thresholdRatio: Float = globalThresholdRatio
     ): Rect {
         val spatialMap = featureMapToSpatialMap(featureMapTensor)
         val mapHeight = spatialMap.size

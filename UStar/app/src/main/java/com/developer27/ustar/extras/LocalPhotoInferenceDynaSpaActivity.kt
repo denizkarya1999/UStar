@@ -114,16 +114,14 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                         val box = MiniDynaSpaPreprocessor.extractBoundingBoxFromFeatureMap(
                             featureMapTensor = result.featureMap,
                             outputWidth = result.processedBitmap.width,
-                            outputHeight = result.processedBitmap.height,
-                            thresholdRatio = 0.70f
+                            outputHeight = result.processedBitmap.height
                         )
 
                         val boxMaskedBitmap =
                             MiniDynaSpaPreprocessor.featureMapToBoundingBoxMaskedBitmap(
                                 processedBitmap = result.processedBitmap,
                                 featureMapTensor = result.featureMap,
-                                predictedClass = result.predictedClass,
-                                thresholdRatio = 0.70f
+                                predictedClass = result.predictedClass
                             )
 
                         imageBoxMask.setImageBitmap(boxMaskedBitmap)

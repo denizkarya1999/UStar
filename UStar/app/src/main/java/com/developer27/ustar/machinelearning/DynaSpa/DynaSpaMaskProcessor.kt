@@ -449,24 +449,25 @@ object DynaSpaMaskProcessor {
                 }
             }
 
-            val keepIds = components
-                .sortedByDescending { it.second }
-                .take(maxComponents)
-                .map { it.first }
-                .toSet()
+            // Sort by area descending and take top N
+            components.sortByDescending { it.second }
+            val topIndices = components.take(maxComponents).map { it.first }.toSet()
 
-            val cleaned = Mat.zeros(binaryMask.size(), CvType.CV_8U)
-
-            for (y in 0 until labels.rows()) {
-                for (x in 0 until labels.cols()) {
-                    val label = labels.get(y, x)[0].toInt()
-                    if (label in keepIds) {
-                        cleaned.put(y, x, 255.0)
-                    }
+            val resultMask = Mat.zeros(binaryMask.size(), CvType.CV_8U)
+            
+            // Efficiently filter the labels mat
+            val labelData = IntArray(labels.rows() * labels.cols())
+            labels.get(0, 0, labelData)
+            
+            val maskData = ByteArray(labels.rows() * labels.cols())
+            for (i in labelData.indices) {
+                if (labelData[i] in topIndices) {
+                    maskData[i] = 255.toByte()
                 }
             }
-
-            return cleaned
+            resultMask.put(0, 0, maskData)
+            
+            return resultMask
         } finally {
             labels.release()
             stats.release()
