@@ -21,7 +21,7 @@ object MiniDynaSpaPreprocessor {
 
     // Sensitivity to "heat" for bounding box extraction (0.0 to 1.0)
     // Lower = larger box, higher = tighter box
-    var globalThresholdRatio = 0.10f
+    var globalThresholdRatio = 0.01f
 
     // Hard-coded class labels
     const val CLASS_NO_UOID = 0
