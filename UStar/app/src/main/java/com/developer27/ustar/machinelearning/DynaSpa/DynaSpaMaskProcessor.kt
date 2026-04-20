@@ -4,9 +4,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
+import android.util.Log
+import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
+import org.opencv.photo.Photo
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
@@ -16,22 +19,73 @@ import kotlin.math.sqrt
 
 object DynaSpaMaskProcessor {
 
-    // OpenCV-only crop extraction controls
-    private const val BORDER_RING_WIDTH = 10
-    private const val DETAIL_PERCENTILE = 92.5
-    private const val SELECTION_CLOSE_KERNEL = 5
-    private const val SELECTION_CLOSE_ITERS = 2
-    private const val FINAL_GATE_DILATE_KERNEL = 7
+    private const val TAG = "DynaSpaMaskProcessor"
+
+    @Volatile
+    private var openCvInitialized = false
+
+    // Continuous OpenCV crop extraction controls
+    private const val BORDER_RING_WIDTH = 12
+    private const val WEAK_PERCENTILE = 79.0
+    private const val STRONG_PERCENTILE = 91.0
+    private const val SUPPORT_CLOSE_KERNEL = 7
+    private const val SUPPORT_CLOSE_ITERS = 2
+    private const val SUPPORT_DILATE_KERNEL = 5
     private const val MIN_COMPONENT_AREA = 30
+    private const val FILL_HOLE_MAX_AREA = 140
+    private const val GRABCUT_ITERS = 4
+    private const val DENOISE_H = 5.0
+    private const val ALPHA_FLOOR = 0.12
+    private const val ALPHA_SPAN = 0.62
+    private const val ALPHA_BLUR_SIGMA = 1.2
+    private const val SEED_PERCENTILE_INSIDE_SUPPORT = 55.0
+    private const val INPAINT_RADIUS = 3.0
+
+    /**
+     * Make sure OpenCV native library is loaded before any Mat() call.
+     */
+    @Synchronized
+    private fun ensureOpenCvLoaded() {
+        if (openCvInitialized) return
+
+        var loaded = false
+
+        try {
+            loaded = OpenCVLoader.initDebug()
+            Log.d(TAG, "OpenCV initDebug(): $loaded")
+        } catch (_: Throwable) {
+        }
+
+        if (!loaded) {
+            try {
+                System.loadLibrary("opencv_java4")
+                loaded = true
+                Log.d(TAG, "OpenCV loaded with System.loadLibrary(opencv_java4)")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to load OpenCV with opencv_java4", t)
+            }
+        }
+
+        if (!loaded) {
+            throw UnsatisfiedLinkError(
+                "OpenCV native library could not be loaded. " +
+                        "Initialize OpenCV at app startup or bundle the correct native OpenCV library."
+            )
+        }
+
+        openCvInitialized = true
+    }
 
     /**
      * Uses the already-created bounding box:
-     * crop -> OpenCV UOID tag extraction -> reconstruct on black background
+     * crop -> continuous OpenCV UOID tag reconstruction -> reconstruct on black background
      */
     fun processBoundingBox(
         source: Bitmap,
         boundingBox: Rect
     ): Bitmap {
+        ensureOpenCvLoaded()
+
         val config = source.config ?: Bitmap.Config.ARGB_8888
 
         // Black output canvas; only processed bbox content will be restored
@@ -63,7 +117,7 @@ object DynaSpaMaskProcessor {
             safeRect.height()
         )
 
-        // Apply OpenCV-only extraction inside the crop
+        // Apply continuous OpenCV reconstruction inside the crop
         val processedCrop = applyOpenCvTagExtractionToCrop(croppedBitmap)
 
         // Put the processed crop back in its original location
@@ -74,10 +128,12 @@ object DynaSpaMaskProcessor {
     }
 
     /**
-     * Applies the OpenCV-only tag extraction to the crop.
+     * Applies the continuous OpenCV tag reconstruction to the crop.
      * Output is RGB content on black background inside the crop.
      */
     private fun applyOpenCvTagExtractionToCrop(input: Bitmap): Bitmap {
+        ensureOpenCvLoaded()
+
         val rgba = Mat()
         val rgb = Mat()
         val resultRgba = Mat()
@@ -87,14 +143,23 @@ object DynaSpaMaskProcessor {
             Utils.bitmapToMat(input, rgba)
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
 
-            tagOnlyRgb = extractUoidTagOnlyOpenCv(
+            tagOnlyRgb = extractUoidTagOnlyOpenCvContinuous(
                 regionRgb = rgb,
                 borderRingWidth = BORDER_RING_WIDTH,
-                detailPercentile = DETAIL_PERCENTILE,
-                selectionCloseKernel = SELECTION_CLOSE_KERNEL,
-                selectionCloseIters = SELECTION_CLOSE_ITERS,
-                finalGateDilateKernel = FINAL_GATE_DILATE_KERNEL,
-                minComponentArea = MIN_COMPONENT_AREA
+                weakPercentile = WEAK_PERCENTILE,
+                strongPercentile = STRONG_PERCENTILE,
+                supportCloseKernel = SUPPORT_CLOSE_KERNEL,
+                supportCloseIters = SUPPORT_CLOSE_ITERS,
+                supportDilateKernel = SUPPORT_DILATE_KERNEL,
+                minComponentArea = MIN_COMPONENT_AREA,
+                fillHoleMaxArea = FILL_HOLE_MAX_AREA,
+                grabcutIters = GRABCUT_ITERS,
+                denoiseH = DENOISE_H,
+                alphaFloor = ALPHA_FLOOR,
+                alphaSpan = ALPHA_SPAN,
+                alphaBlurSigma = ALPHA_BLUR_SIGMA,
+                seedPercentileInsideSupport = SEED_PERCENTILE_INSIDE_SUPPORT,
+                inpaintRadius = INPAINT_RADIUS
             )
 
             Imgproc.cvtColor(tagOnlyRgb, resultRgba, Imgproc.COLOR_RGB2RGBA)
@@ -115,25 +180,35 @@ object DynaSpaMaskProcessor {
     }
 
     /**
-     * OpenCV-only extraction of the UOID tag from the bbox crop.
+     * Continuous OpenCV-only extraction / reconstruction of the UOID tag from the bbox crop.
      *
      * Strategy:
-     * 1) Estimate background color from the border ring in LAB
-     * 2) Emphasize thin bright structure using top-hat + CLAHE
-     * 3) Add color-distance / edge cues
-     * 4) Build a detail mask
-     * 5) Build a connected selection mask
-     * 6) Keep only the main cube-like component
-     * 7) Copy only those pixels into a black RGB output
+     * 1) Light denoising
+     * 2) Estimate background color from the border ring in LAB
+     * 3) Build a continuous support region from multiple cues
+     * 4) Refine with GrabCut
+     * 5) Fill small holes
+     * 6) Build soft alpha
+     * 7) Reconstruct missing areas with inpainting
+     * 8) Copy only reconstructed tag pixels into black RGB output
      */
-    private fun extractUoidTagOnlyOpenCv(
+    private fun extractUoidTagOnlyOpenCvContinuous(
         regionRgb: Mat,
         borderRingWidth: Int,
-        detailPercentile: Double,
-        selectionCloseKernel: Int,
-        selectionCloseIters: Int,
-        finalGateDilateKernel: Int,
-        minComponentArea: Int
+        weakPercentile: Double,
+        strongPercentile: Double,
+        supportCloseKernel: Int,
+        supportCloseIters: Int,
+        supportDilateKernel: Int,
+        minComponentArea: Int,
+        fillHoleMaxArea: Int,
+        grabcutIters: Int,
+        denoiseH: Double,
+        alphaFloor: Double,
+        alphaSpan: Double,
+        alphaBlurSigma: Double,
+        seedPercentileInsideSupport: Double,
+        inpaintRadius: Double
     ): Mat {
         val toRelease = mutableListOf<Mat>()
         fun keep(mat: Mat): Mat {
@@ -145,34 +220,65 @@ object DynaSpaMaskProcessor {
 
         try {
             val regionBgr = keep(Mat())
+            val denoisedBgr = keep(Mat())
             val lab = keep(Mat())
             val hsv = keep(Mat())
             val gray = keep(Mat())
             val grayEq = keep(Mat())
             val grayBlur = keep(Mat())
+
+            val opened = keep(Mat())
+            val whiteBoost = keep(Mat())
             val satChannel = keep(Mat())
-            val topHat = keep(Mat())
-            val canny = keep(Mat())
-            val cannyFloat = keep(Mat())
             val lap = keep(Mat())
             val lapAbs = keep(Mat())
-            val combined = keep(Mat.zeros(regionRgb.size(), CvType.CV_32F))
-            val temp = keep(Mat())
-            val detailMaskFloat = keep(Mat())
-            val detailMask = keep(Mat())
-            val selectionMask = keep(Mat())
-            val gate = keep(Mat())
-            val finalMask = keep(Mat())
+
+            val score = keep(Mat.zeros(regionRgb.size(), CvType.CV_32F))
+            val tmp = keep(Mat())
+            val tmp2 = keep(Mat())
+
+            val weakMaskFloat = keep(Mat())
+            val weakMask = keep(Mat())
+            val strongMaskFloat = keep(Mat())
+            val strongMask = keep(Mat())
+
+            val supportMask = keep(Mat())
+            val supportMaskFilled = keep(Mat())
+            val alpha = keep(Mat())
+            val alphaBlurred = keep(Mat())
+            val alphaU8 = keep(Mat())
+            val hardMask = keep(Mat())
+
+            val seedMaskFloat = keep(Mat())
+            val seedMask = keep(Mat())
+            val sparseSeed = keep(Mat.zeros(regionRgb.size(), CvType.CV_8UC3))
+            val holeMask = keep(Mat())
+            val reconstructedBgr = keep(Mat())
+            val reconstructedRgb = keep(Mat())
+            val reconstructedFloat = keep(Mat())
+            val alphaFloat3 = keep(Mat())
+            val finalRgbFloat = keep(Mat())
+            val finalRgb = keep(Mat())
 
             Imgproc.cvtColor(regionRgb, regionBgr, Imgproc.COLOR_RGB2BGR)
-            Imgproc.cvtColor(regionBgr, lab, Imgproc.COLOR_BGR2Lab)
-            Imgproc.cvtColor(regionBgr, hsv, Imgproc.COLOR_BGR2HSV)
-            Imgproc.cvtColor(regionBgr, gray, Imgproc.COLOR_BGR2GRAY)
 
-            val claheGray = Imgproc.createCLAHE(2.2, Size(8.0, 8.0))
+            Photo.fastNlMeansDenoisingColored(
+                regionBgr,
+                denoisedBgr,
+                denoiseH.toFloat(),
+                denoiseH.toFloat(),
+                7,
+                21
+            )
+
+            Imgproc.cvtColor(denoisedBgr, lab, Imgproc.COLOR_BGR2Lab)
+            Imgproc.cvtColor(denoisedBgr, hsv, Imgproc.COLOR_BGR2HSV)
+            Imgproc.cvtColor(denoisedBgr, gray, Imgproc.COLOR_BGR2GRAY)
+
+            val claheGray = Imgproc.createCLAHE(2.0, Size(8.0, 8.0))
             claheGray.apply(gray, grayEq)
 
-            Imgproc.bilateralFilter(grayEq, grayBlur, 7, 45.0, 45.0)
+            Imgproc.bilateralFilter(grayEq, grayBlur, 7, 35.0, 35.0)
 
             val h = gray.rows()
             val w = gray.cols()
@@ -187,129 +293,240 @@ object DynaSpaMaskProcessor {
             // Background color estimate from the border ring in LAB
             val bgMedian = computeBorderMedianLab(lab, ring)
 
-            // LAB distance map
+            // Cue 1: LAB distance from border background
             val labDist = keep(createLabDistanceMap(lab, bgMedian))
             val labDistNorm = keep(normalizeMask(labDist))
 
-            // Top-hat on grayscale detail
-            val kTopHat = max(11, ensureOdd(min(h, w) / 12))
-            val topHatKernel = keep(
+            // Cue 2: white / bright structure emphasis
+            val kOpen = max(11, ensureOdd(min(h, w) / 5))
+            val openKernel = keep(
                 Imgproc.getStructuringElement(
                     Imgproc.MORPH_ELLIPSE,
-                    Size(kTopHat.toDouble(), kTopHat.toDouble())
+                    Size(kOpen.toDouble(), kOpen.toDouble())
                 )
             )
-            Imgproc.morphologyEx(grayBlur, topHat, Imgproc.MORPH_TOPHAT, topHatKernel)
-            val topHatNorm = keep(normalizeMask(topHat))
+            Imgproc.morphologyEx(grayBlur, opened, Imgproc.MORPH_OPEN, openKernel)
+            Core.subtract(grayBlur, opened, whiteBoost)
+            whiteBoost.convertTo(whiteBoost, CvType.CV_32F)
+            val whiteBoostNorm = keep(normalizeMask(whiteBoost))
 
-            // Edge cues
-            Imgproc.Canny(grayBlur, canny, 30.0, 90.0)
-            canny.convertTo(cannyFloat, CvType.CV_32F, 1.0 / 255.0)
+            // Cue 3: saturation
+            Core.extractChannel(hsv, satChannel, 1)
+            val satNorm = keep(normalizeMask(satChannel))
 
+            // Cue 4: structural edges
             Imgproc.Laplacian(grayBlur, lap, CvType.CV_32F, 3)
             Core.absdiff(lap, Scalar.all(0.0), lapAbs)
             val lapNorm = keep(normalizeMask(lapAbs))
 
-            // Saturation cue
-            Core.extractChannel(hsv, satChannel, 1)
-            val satNorm = keep(normalizeMask(satChannel))
+            // score = 0.36 * lab_dist + 0.28 * white_boost + 0.22 * sat + 0.14 * grad
+            Core.addWeighted(labDistNorm, 0.36, whiteBoostNorm, 0.28, 0.0, score)
+            Core.addWeighted(satNorm, 0.22, lapNorm, 0.14, 0.0, tmp)
+            Core.add(score, tmp, score)
 
-            // Weighted cue fusion:
-            // 0.45 * top_hat + 0.25 * lab_dist + 0.15 * canny + 0.10 * lap + 0.05 * sat
-            Core.addWeighted(topHatNorm, 0.45, labDistNorm, 0.25, 0.0, combined)
-            Core.addWeighted(cannyFloat, 0.15, lapNorm, 0.10, 0.0, temp)
-            Core.add(combined, temp, combined)
-            Core.multiply(satNorm, Scalar.all(0.05), temp)
-            Core.add(combined, temp, combined)
+            val scoreNorm = keep(normalizeMask(score))
 
-            val combinedNorm = keep(normalizeMask(combined))
-
-            if (Core.minMaxLoc(combinedNorm).maxVal <= 1e-8) {
+            if (Core.minMaxLoc(scoreNorm).maxVal <= 1e-8) {
                 outputToKeep = Mat.zeros(regionRgb.size(), CvType.CV_8UC3)
                 return outputToKeep!!
             }
 
-            // High-percentile threshold to keep fine detail
-            val thrVal = percentile(combinedNorm, detailPercentile)
-            Imgproc.threshold(combinedNorm, detailMaskFloat, thrVal, 255.0, Imgproc.THRESH_BINARY)
-            detailMaskFloat.convertTo(detailMask, CvType.CV_8U)
+            // Weak mask
+            val weakThr = percentile(scoreNorm, weakPercentile)
+            Imgproc.threshold(scoreNorm, weakMaskFloat, weakThr, 255.0, Imgproc.THRESH_BINARY)
+            weakMaskFloat.convertTo(weakMask, CvType.CV_8U)
 
-            val detailOpenKernel = keep(
+            val supportCloseKernelMat = keep(
                 Imgproc.getStructuringElement(
                     Imgproc.MORPH_ELLIPSE,
-                    Size(3.0, 3.0)
-                )
-            )
-            Imgproc.morphologyEx(detailMask, detailMask, Imgproc.MORPH_OPEN, detailOpenKernel)
-
-            // Connect nearby detail to find the main region
-            val selectionKernelSize = ensureOdd(selectionCloseKernel)
-            val selectionKernel = keep(
-                Imgproc.getStructuringElement(
-                    Imgproc.MORPH_ELLIPSE,
-                    Size(selectionKernelSize.toDouble(), selectionKernelSize.toDouble())
+                    Size(
+                        ensureOdd(supportCloseKernel).toDouble(),
+                        ensureOdd(supportCloseKernel).toDouble()
+                    )
                 )
             )
             Imgproc.morphologyEx(
-                detailMask,
-                selectionMask,
+                weakMask,
+                weakMask,
                 Imgproc.MORPH_CLOSE,
-                selectionKernel,
+                supportCloseKernelMat,
                 Point(-1.0, -1.0),
-                selectionCloseIters
+                supportCloseIters
             )
 
-            val dilate3 = keep(
+            val supportDilateKernelMat = keep(
+                Imgproc.getStructuringElement(
+                    Imgproc.MORPH_ELLIPSE,
+                    Size(
+                        ensureOdd(supportDilateKernel).toDouble(),
+                        ensureOdd(supportDilateKernel).toDouble()
+                    )
+                )
+            )
+            Imgproc.dilate(weakMask, weakMask, supportDilateKernelMat)
+
+            val bestWeak = keep(keepBestComponent(weakMask, minComponentArea))
+            if (Core.countNonZero(bestWeak) > 0) {
+                bestWeak.copyTo(weakMask)
+            } else {
+                val fallbackWeakThr = percentile(scoreNorm, 75.0)
+                Imgproc.threshold(scoreNorm, weakMaskFloat, fallbackWeakThr, 255.0, Imgproc.THRESH_BINARY)
+                weakMaskFloat.convertTo(weakMask, CvType.CV_8U)
+                val fallbackWeak = keep(keepTopConnectedComponents(weakMask, 1, 8))
+                fallbackWeak.copyTo(weakMask)
+            }
+
+            // Strong mask
+            val strongThr = percentile(scoreNorm, strongPercentile)
+            Imgproc.threshold(scoreNorm, strongMaskFloat, strongThr, 255.0, Imgproc.THRESH_BINARY)
+            strongMaskFloat.convertTo(strongMask, CvType.CV_8U)
+            Core.bitwise_and(strongMask, weakMask, strongMask)
+
+            val open3 = keep(
                 Imgproc.getStructuringElement(
                     Imgproc.MORPH_ELLIPSE,
                     Size(3.0, 3.0)
                 )
             )
-            Imgproc.dilate(selectionMask, selectionMask, dilate3)
+            Imgproc.morphologyEx(strongMask, strongMask, Imgproc.MORPH_OPEN, open3)
+            Imgproc.dilate(strongMask, strongMask, open3)
 
-            // Keep the single best component, preferring large + central
-            val anchorComponent = keep(keepBestComponent(selectionMask, minComponentArea))
-            val fallbackAnchor =
-                if (Core.countNonZero(anchorComponent) == 0) keep(keepTopConnectedComponents(selectionMask, 1, 1))
-                else null
+            if (Core.countNonZero(strongMask) == 0) {
+                Imgproc.erode(weakMask, strongMask, open3)
+            }
 
-            val gateSource = fallbackAnchor ?: anchorComponent
+            // GrabCut refinement
+            val gcMask = keep(Mat(regionRgb.size(), CvType.CV_8U, Scalar.all(Imgproc.GC_PR_BGD.toDouble())))
 
-            val gateKernelSize = ensureOdd(finalGateDilateKernel)
-            val gateKernel = keep(
+            // border = definite background
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    if (y < ring || y >= h - ring || x < ring || x >= w - ring) {
+                        gcMask.put(y, x, Imgproc.GC_BGD.toDouble())
+                    }
+                }
+            }
+
+            // weak = probable foreground, strong = definite foreground
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    if ((weakMask.get(y, x)?.get(0)?.toInt() ?: 0) > 0) {
+                        gcMask.put(y, x, Imgproc.GC_PR_FGD.toDouble())
+                    }
+                    if ((strongMask.get(y, x)?.get(0)?.toInt() ?: 0) > 0) {
+                        gcMask.put(y, x, Imgproc.GC_FGD.toDouble())
+                    }
+                }
+            }
+
+            val bgdModel = keep(Mat.zeros(1, 65, CvType.CV_64F))
+            val fgdModel = keep(Mat.zeros(1, 65, CvType.CV_64F))
+
+            val grabcutMask = keep(Mat.zeros(regionRgb.size(), CvType.CV_8U))
+            try {
+                Imgproc.grabCut(
+                    denoisedBgr,
+                    gcMask,
+                    org.opencv.core.Rect(),
+                    bgdModel,
+                    fgdModel,
+                    max(1, grabcutIters),
+                    Imgproc.GC_INIT_WITH_MASK
+                )
+
+                for (y in 0 until h) {
+                    for (x in 0 until w) {
+                        val v = gcMask.get(y, x)?.get(0)?.toInt() ?: Imgproc.GC_BGD
+                        val isFg = (v == Imgproc.GC_FGD || v == Imgproc.GC_PR_FGD)
+                        grabcutMask.put(y, x, if (isFg) 255.0 else 0.0)
+                    }
+                }
+            } catch (_: Exception) {
+                weakMask.copyTo(grabcutMask)
+            }
+
+            Core.bitwise_or(weakMask, grabcutMask, supportMask)
+
+            val close7 = keep(
                 Imgproc.getStructuringElement(
                     Imgproc.MORPH_ELLIPSE,
-                    Size(gateKernelSize.toDouble(), gateKernelSize.toDouble())
+                    Size(7.0, 7.0)
                 )
             )
-            Imgproc.dilate(gateSource, gate, gateKernel)
+            Imgproc.morphologyEx(supportMask, supportMask, Imgproc.MORPH_CLOSE, close7, Point(-1.0, -1.0), 2)
 
-            // Keep only detailed pixels that belong to the main gated region
-            Core.bitwise_and(detailMask, gate, finalMask)
+            val filledSupport = keep(fillSmallHoles(supportMask, fillHoleMaxArea))
+            val bestSupport = keep(keepBestComponent(filledSupport, minComponentArea))
 
-            val finalCloseKernel = keep(
-                Imgproc.getStructuringElement(
-                    Imgproc.MORPH_ELLIPSE,
-                    Size(3.0, 3.0)
-                )
-            )
-            Imgproc.morphologyEx(finalMask, finalMask, Imgproc.MORPH_CLOSE, finalCloseKernel)
+            if (Core.countNonZero(bestSupport) > 0) {
+                bestSupport.copyTo(supportMaskFilled)
+            } else {
+                weakMask.copyTo(supportMaskFilled)
+            }
 
-            val cleanedFinal = keep(
-                keepTopConnectedComponents(
-                    finalMask,
-                    4,
-                    max(8, minComponentArea / 3)
-                )
-            )
+            // Soft alpha
+            scoreNorm.convertTo(alpha, CvType.CV_32F)
+            Core.subtract(alpha, Scalar.all(alphaFloor), alpha)
+            Core.multiply(alpha, Scalar.all(1.0 / max(1e-6, alphaSpan)), alpha)
 
-            // Ensure clean binary mask
-            Imgproc.threshold(cleanedFinal, cleanedFinal, 0.0, 255.0, Imgproc.THRESH_BINARY)
+            clampMat(alpha, 0.0, 1.0)
 
-            // Copy only selected pixels onto black background
-            outputToKeep = Mat.zeros(regionRgb.size(), CvType.CV_8UC3)
-            regionRgb.copyTo(outputToKeep, cleanedFinal)
+            val supportFloat = keep(Mat())
+            supportMaskFilled.convertTo(supportFloat, CvType.CV_32F, 1.0 / 255.0)
+            Core.multiply(alpha, supportFloat, alpha)
 
+            if (alphaBlurSigma > 0.0) {
+                Imgproc.GaussianBlur(alpha, alphaBlurred, Size(0.0, 0.0), alphaBlurSigma)
+            } else {
+                alpha.copyTo(alphaBlurred)
+            }
+
+            clampMat(alphaBlurred, 0.0, 1.0)
+            alphaBlurred.convertTo(alphaU8, CvType.CV_8U, 255.0)
+
+            Imgproc.threshold(alphaU8, hardMask, 18.0, 255.0, Imgproc.THRESH_BINARY)
+
+            // Seed mask for inpainting
+            val seedThr = if (Core.countNonZero(supportMaskFilled) > 0) {
+                percentileInsideMask(scoreNorm, supportMaskFilled, seedPercentileInsideSupport)
+            } else {
+                percentile(scoreNorm, seedPercentileInsideSupport)
+            }
+
+            Imgproc.threshold(scoreNorm, seedMaskFloat, seedThr, 255.0, Imgproc.THRESH_BINARY)
+            seedMaskFloat.convertTo(seedMask, CvType.CV_8U)
+            Core.bitwise_and(seedMask, supportMaskFilled, seedMask)
+            Imgproc.morphologyEx(seedMask, seedMask, Imgproc.MORPH_CLOSE, open3)
+
+            denoisedBgr.copyTo(sparseSeed, seedMask)
+
+            val invSeed = keep(Mat())
+            Core.bitwise_not(seedMask, invSeed)
+            Core.bitwise_and(supportMaskFilled, invSeed, holeMask)
+
+            Photo.inpaint(sparseSeed, holeMask, reconstructedBgr, inpaintRadius, Photo.INPAINT_TELEA)
+            Core.addWeighted(reconstructedBgr, 0.68, denoisedBgr, 0.32, 0.0, reconstructedBgr)
+
+            val invSupport = keep(Mat())
+            Core.bitwise_not(supportMaskFilled, invSupport)
+            reconstructedBgr.setTo(Scalar.all(0.0), invSupport)
+
+            Imgproc.cvtColor(reconstructedBgr, reconstructedRgb, Imgproc.COLOR_BGR2RGB)
+
+            reconstructedRgb.convertTo(reconstructedFloat, CvType.CV_32FC3)
+
+            val alphaChannels = ArrayList<Mat>(3)
+            alphaBlurred.convertTo(tmp2, CvType.CV_32F)
+            alphaChannels.add(tmp2.clone())
+            alphaChannels.add(tmp2.clone())
+            alphaChannels.add(tmp2.clone())
+            Core.merge(alphaChannels, alphaFloat3)
+            alphaChannels.forEach { it.release() }
+
+            Core.multiply(reconstructedFloat, alphaFloat3, finalRgbFloat)
+            finalRgbFloat.convertTo(finalRgb, CvType.CV_8UC3)
+
+            outputToKeep = finalRgb.clone()
             return outputToKeep!!
         } finally {
             toRelease.forEach { mat ->
@@ -403,6 +620,68 @@ object DynaSpaMaskProcessor {
             return normalized
         } finally {
             srcFloat.release()
+        }
+    }
+
+    /**
+     * Fill only small enclosed holes inside a binary mask.
+     */
+    private fun fillSmallHoles(binaryMask: Mat, maxHoleArea: Int): Mat {
+        val mask8u = Mat()
+        val inv = Mat()
+        val flood = Mat()
+        val floodMask = Mat.zeros(binaryMask.rows() + 2, binaryMask.cols() + 2, CvType.CV_8U)
+        val holes = Mat()
+        val result = Mat()
+
+        try {
+            Imgproc.threshold(binaryMask, mask8u, 0.0, 255.0, Imgproc.THRESH_BINARY)
+            Core.bitwise_not(mask8u, inv)
+            inv.copyTo(flood)
+
+            Imgproc.floodFill(flood, floodMask, Point(0.0, 0.0), Scalar(128.0))
+            Core.compare(flood, Scalar(255.0), holes, Core.CMP_EQ)
+
+            val labels = Mat()
+            val stats = Mat()
+            val centroids = Mat()
+
+            try {
+                val numLabels = Imgproc.connectedComponentsWithStats(
+                    holes,
+                    labels,
+                    stats,
+                    centroids,
+                    8,
+                    CvType.CV_32S
+                )
+
+                val smallHoles = Mat.zeros(binaryMask.size(), CvType.CV_8U)
+                for (i in 1 until numLabels) {
+                    val area = stats.get(i, Imgproc.CC_STAT_AREA)[0].toInt()
+                    if (area <= maxHoleArea) {
+                        val componentMask = Mat()
+                        Core.compare(labels, Scalar(i.toDouble()), componentMask, Core.CMP_EQ)
+                        Core.bitwise_or(smallHoles, componentMask, smallHoles)
+                        componentMask.release()
+                    }
+                }
+
+                Core.bitwise_or(mask8u, smallHoles, result)
+                smallHoles.release()
+            } finally {
+                labels.release()
+                stats.release()
+                centroids.release()
+            }
+
+            return result
+        } finally {
+            mask8u.release()
+            inv.release()
+            flood.release()
+            floodMask.release()
+            holes.release()
         }
     }
 
@@ -590,6 +869,53 @@ object DynaSpaMaskProcessor {
         } finally {
             srcFloat.release()
         }
+    }
+
+    /**
+     * Percentile inside a binary mask for a single-channel Mat.
+     */
+    private fun percentileInsideMask(src: Mat, mask: Mat, percentile: Double): Double {
+        val values = ArrayList<Float>()
+
+        val rows = src.rows()
+        val cols = src.cols()
+
+        for (y in 0 until rows) {
+            for (x in 0 until cols) {
+                val m = mask.get(y, x)?.get(0)?.toInt() ?: 0
+                if (m > 0) {
+                    val v = src.get(y, x)?.get(0)?.toFloat() ?: 0f
+                    values.add(v)
+                }
+            }
+        }
+
+        if (values.isEmpty()) {
+            return this.percentile(src, percentile)
+        }
+
+        val data = values.toFloatArray()
+        data.sort()
+
+        val p = percentile.coerceIn(0.0, 100.0)
+        val position = (p / 100.0) * (data.size - 1)
+        val lo = floor(position).toInt()
+        val hi = ceil(position).toInt()
+
+        if (lo == hi) {
+            return data[lo].toDouble()
+        }
+
+        val weight = position - lo
+        return data[lo] * (1.0 - weight) + data[hi] * weight
+    }
+
+    /**
+     * Clamp a float Mat into [minVal, maxVal].
+     */
+    private fun clampMat(mat: Mat, minVal: Double, maxVal: Double) {
+        Core.max(mat, Scalar.all(minVal), mat)
+        Core.min(mat, Scalar.all(maxVal), mat)
     }
 
     /**
