@@ -21,7 +21,7 @@ object MiniDynaSpaPreprocessor {
 
     // Sensitivity to "heat" for bounding box extraction (0.0 to 1.0)
     // Lower = larger box, higher = tighter box
-    var globalThresholdRatio = 0.00f
+    var globalThresholdRatio = 0.35f
 
     // Hard-coded class labels
     const val CLASS_NO_UOID = 0
@@ -146,8 +146,7 @@ object MiniDynaSpaPreprocessor {
     }
 
     fun shouldShowBoundingBox(predictedClass: Int): Boolean {
-        // Temporarily return true to bypass tag-detection based filtering
-        return true // predictedClass == CLASS_UOID_PRESENT
+        return predictedClass == CLASS_UOID_PRESENT
     }
 
     // Create bounding-box masked bitmap from feature-map intensity
