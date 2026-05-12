@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
@@ -15,6 +17,11 @@ import androidx.appcompat.app.AppCompatActivity
 import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.DynaSpa.DynaSpaMaskProcessor
 import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
@@ -29,6 +36,9 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
 
     private var selectedBitmap: Bitmap? = null
+
+    // Global variable for combined log message
+    private var logMessage: StringBuilder = StringBuilder()
 
     // Pick image from gallery
     private val pickImageLauncher =
@@ -85,47 +95,21 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
             Thread {
                 try {
+                    logMessage = StringBuilder()
+                    val startTime = System.currentTimeMillis()
                     val result = MiniDynaSpaPreprocessor.run(this, bitmap)
-
-                    runOnUiThread {
-                        // Restore UI
-                        progressBar.visibility = View.GONE
-                        runButton.isEnabled = true
-                        selectButton.isEnabled = true
-
-                        if (result == null) {
-                            predictionLabel.text = "Prediction: Inference failed"
-                            Toast.makeText(this, "Inference failed", Toast.LENGTH_SHORT).show()
-                            return@runOnUiThread
-                        }
-
-                        // Show model input (the 1024 crop resized to 224)
-                        imageModelInput.setImageBitmap(result.processedBitmap)
-
-                        // Show feature-map heatmap
-                        val featureMapBitmap =
-                            MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
-                                featureMapTensor = result.featureMap
-                            )
-
-                        imageMask.setImageBitmap(featureMapBitmap)
-
-                        // Show bounding-box masked cropped image
+                    val endTime = System.currentTimeMillis()
+                    
+                    if (result != null) {
+                        logMessage.appendLine("DynaSpa Model Inference Time: ${endTime - startTime} ms")
+                        
                         val box = MiniDynaSpaPreprocessor.extractBoundingBoxFromFeatureMap(
                             featureMapTensor = result.featureMap,
                             outputWidth = result.processedBitmap.width,
                             outputHeight = result.processedBitmap.height
                         )
 
-                        val boxMaskedBitmap =
-                            MiniDynaSpaPreprocessor.featureMapToBoundingBoxMaskedBitmap(
-                                processedBitmap = result.processedBitmap,
-                                featureMapTensor = result.featureMap,
-                                predictedClass = result.predictedClass
-                            )
-
-                        imageBoxMask.setImageBitmap(boxMaskedBitmap)
-
+                        val dynaSpaStartTime = System.currentTimeMillis()
                         val dynaSpaProcessedBitmap = if (MiniDynaSpaPreprocessor.shouldShowBoundingBox(result.predictedClass)) {
                             DynaSpaMaskProcessor.processBoundingBox(
                                 source = result.processedBitmap,
@@ -138,19 +122,59 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                                 Bitmap.Config.ARGB_8888
                             ).apply { eraseColor(android.graphics.Color.BLACK) }
                         }
+                        val dynaSpaEndTime = System.currentTimeMillis()
+                        logMessage.appendLine("DynaSpa Reconstruction Time: ${dynaSpaEndTime - dynaSpaStartTime} ms")
 
-                        imageDynaSpa.setImageBitmap(dynaSpaProcessedBitmap)
+                        val boxMaskedBitmap =
+                            MiniDynaSpaPreprocessor.featureMapToBoundingBoxMaskedBitmap(
+                                processedBitmap = result.processedBitmap,
+                                featureMapTensor = result.featureMap,
+                                predictedClass = result.predictedClass
+                            )
 
-                        // Show both class probabilities
-                        val probs = result.probabilities
-                        val prob0 = if (probs.size > 0) probs[0] else 0f
-                        val prob1 = if (probs.size > 1) probs[1] else 0f
+                        val featureMapBitmap =
+                            MiniDynaSpaPreprocessor.featureMapToHeatmapBitmap(
+                                featureMapTensor = result.featureMap
+                            )
 
-                        predictionLabel.text =
-                            "No UOID tag: ${String.format("%.3f", prob0)}\n" +
+                        runOnUiThread {
+                            // Restore UI
+                            progressBar.visibility = View.GONE
+                            runButton.isEnabled = true
+                            selectButton.isEnabled = true
+
+                            // Show model input (the 1024 crop resized to 224)
+                            imageModelInput.setImageBitmap(result.processedBitmap)
+
+                            // Show feature-map heatmap
+                            imageMask.setImageBitmap(featureMapBitmap)
+
+                            // Show bounding-box masked cropped image
+                            imageBoxMask.setImageBitmap(boxMaskedBitmap)
+
+                            imageDynaSpa.setImageBitmap(dynaSpaProcessedBitmap)
+
+                            // Show both class probabilities
+                            val probs = result.probabilities
+                            val prob0 = if (probs.size > 0) probs[0] else 0f
+                            val prob1 = if (probs.size > 1) probs[1] else 0f
+
+                            val predictionText = "No UOID tag: ${String.format("%.3f", prob0)}\n" +
                                     "UOID tag present: ${String.format("%.3f", prob1)}"
+                            predictionLabel.text = predictionText
+                            
+                            logMessage.appendLine(predictionText.replace("\n", " | "))
+                            writeLogToFile()
+                        }
+                    } else {
+                        runOnUiThread {
+                            progressBar.visibility = View.GONE
+                            runButton.isEnabled = true
+                            selectButton.isEnabled = true
+                            predictionLabel.text = "Prediction: Inference failed"
+                            Toast.makeText(this, "Inference failed", Toast.LENGTH_SHORT).show()
+                        }
                     }
-
                 } catch (e: Exception) {
                     runOnUiThread {
                         progressBar.visibility = View.GONE
@@ -172,6 +196,32 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /** Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt */
+    private fun writeLogToFile() {
+        try {
+            val documentsDir =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            if (!documentsDir.exists()) documentsDir.mkdirs()
+
+            val logFile = File(documentsDir, "UStar_Cube_Prediction.txt")
+
+            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+            val fullLog = StringBuilder()
+                .appendLine("UStar UIOD Tag Features")
+                .appendLine("Prediction Date: $timestamp")
+                .append(logMessage.toString())
+
+            FileWriter(logFile, false).use { writer ->
+                writer.write(fullLog.toString())
+            }
+
+            Log.i("UStarLogger", "DynaSpa file overwritten with:\n$fullLog")
+        } catch (e: Exception) {
+            Log.e("UStarLogger", "Error writing log file (DynaSpa): ${e.message}")
         }
     }
 }

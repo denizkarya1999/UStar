@@ -248,16 +248,19 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                     val randomIndex = Random.nextInt(selectedBitmaps.size)
                     val randomBitmap = selectedBitmaps[randomIndex]
 
+                    val startTime = System.currentTimeMillis()
                     val denoisedBitmap = withContext(Dispatchers.Default) {
                         Denoising_CycleGAN.load(this@LocalPictureInferenceActivity)
                         Denoising_CycleGAN.run(randomBitmap)
                     }
+                    val endTime = System.currentTimeMillis()
 
                     // Show random original + denoised pair
                     imageOriginal.setImageBitmap(randomBitmap)
                     imageDenoised.setImageBitmap(denoisedBitmap)
 
                     logMessage.appendLine("CycleGAN: Denoised sample index = $randomIndex")
+                    logMessage.appendLine("CycleGAN Inference Time: ${endTime - startTime} ms")
                 } else {
                     // If CycleGAN not selected, just show first image as reference
                     imageOriginal.setImageBitmap(selectedBitmaps.first())
@@ -273,6 +276,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 var opticalTotal = 0
 
                 if (checkOpticalRanging.isChecked) {
+                    var totalTime = 0L
                     withContext(Dispatchers.Default) {
                         if (opticalModel == null) {
                             opticalModel = Optical_Ranging_ResNet18.loadModel(
@@ -281,15 +285,20 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                         }
 
                         selectedBitmaps.forEachIndexed { index, bmp ->
+                            val startTime = System.currentTimeMillis()
                             val result = opticalModel?.run(bmp)
+                            val endTime = System.currentTimeMillis()
+                            
                             if (result != null) {
                                 opticalLastPrediction = result.topClass
                                 opticalTotal++
+                                val inferenceTime = endTime - startTime
+                                totalTime += inferenceTime
 
                                 // Log per-image prediction
                                 logMessage.appendLine(
                                     "OpticalRanging: image#$index => pred=${result.topClass}, " +
-                                            "gt=${gtOptical ?: "N/A"}"
+                                            "gt=${gtOptical ?: "N/A"}, time=$inferenceTime ms"
                                 )
 
                                 if (gtOptical != null &&
@@ -315,8 +324,9 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
 
                         logMessage.appendLine(
                             "OpticalRanging Summary: last=$opticalLastPrediction, " +
-                                    "correct=$opticalCorrect, total=$opticalTotal"
+                                    "correct=$opticalCorrect, total=$opticalTotal, avgTime=${totalTime / opticalTotal} ms"
                         )
+                        logMessage.appendLine("Total Optical Ranging Inference Time: $totalTime ms")
                     } else {
                         textOpticalResult.text =
                             "Optical Ranging Model - Failed to load or run."
@@ -334,6 +344,7 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 var orientationTotal = 0
 
                 if (checkOrientation.isChecked) {
+                    var totalTime = 0L
                     withContext(Dispatchers.Default) {
                         if (orientationModel == null) {
                             orientationModel = Orientation_Guidance_ResNet18.loadModel(
@@ -342,15 +353,20 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                         }
 
                         selectedBitmaps.forEachIndexed { index, bmp ->
+                            val startTime = System.currentTimeMillis()
                             val result = orientationModel?.run(bmp)
+                            val endTime = System.currentTimeMillis()
+                            
                             if (result != null) {
                                 orientationLastPrediction = result.topClass
                                 orientationTotal++
+                                val inferenceTime = endTime - startTime
+                                totalTime += inferenceTime
 
                                 // Log per-image prediction
                                 logMessage.appendLine(
                                     "Orientation: image#$index => pred=${result.topClass}, " +
-                                            "gt=${gtOrientation ?: "N/A"}"
+                                            "gt=${gtOrientation ?: "N/A"}, time=$inferenceTime ms"
                                 )
 
                                 if (gtOrientation != null &&
@@ -376,8 +392,9 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
 
                         logMessage.appendLine(
                             "Orientation Summary: last=$orientationLastPrediction, " +
-                                    "correct=$orientationCorrect, total=$orientationTotal"
+                                    "correct=$orientationCorrect, total=$orientationTotal, avgTime=${totalTime / orientationTotal} ms"
                         )
+                        logMessage.appendLine("Total Orientation Inference Time: $totalTime ms")
                     } else {
                         textOrientationResult.text =
                             "Orientation Guidance Model - Failed to load or run."

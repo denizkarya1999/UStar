@@ -77,7 +77,8 @@ class VideoProcessor(private val context: Context) {
 
     /** Run tag detection model and return its DynaSpa masked result as a Bitmap */
     private fun runDynaSpaDenoisingInference(input: Bitmap): Bitmap {
-        return try {
+        val startTime = System.currentTimeMillis()
+        val resultBitmap = try {
             val result = MiniDynaSpaPreprocessor.run(context, input)
 
             if (result != null) {
@@ -110,11 +111,15 @@ class VideoProcessor(private val context: Context) {
             ).show()
             input
         }
+        val endTime = System.currentTimeMillis()
+        logMessage.appendLine("DynaSpa Denoising Inference Time: ${endTime - startTime} ms")
+        return resultBitmap
     }
 
     /** Run CycleGAN denoising inference on a given Bitmap */
     private fun runCycleGANDenoisingInference(input: Bitmap): Bitmap {
-        return try {
+        val startTime = System.currentTimeMillis()
+        val resultBitmap = try {
             com.developer27.ustar.machinelearning.Denoising_CycleGAN.run(input)
         } catch (e: Exception) {
             Toast.makeText(
@@ -124,6 +129,9 @@ class VideoProcessor(private val context: Context) {
             ).show()
             input
         }
+        val endTime = System.currentTimeMillis()
+        logMessage.appendLine("CycleGAN Denoising Inference Time: ${endTime - startTime} ms")
+        return resultBitmap
     }
 
     /** Run ResNet-18 classifier for orientation and optical ranging and append its result to the global log */
@@ -137,11 +145,15 @@ class VideoProcessor(private val context: Context) {
             ?: return "ResNet-18 based Optical Ranging Model Unavailable"
 
         // Run inference for optical ranging
+        val rangingStartTime = System.currentTimeMillis()
         val rangingResult = opticalRangingModel.run(input)
+        val rangingEndTime = System.currentTimeMillis()
         val rangingPrediction = rangingResult.topClass
 
         // Run inference for orientation
+        val orientationStartTime = System.currentTimeMillis()
         val orientationResult = orientationModel.run(input)
+        val orientationEndTime = System.currentTimeMillis()
         val orientationPrediction = orientationResult.topClass
 
         // Combined prediction
@@ -149,6 +161,8 @@ class VideoProcessor(private val context: Context) {
 
         // Append the ResNet result line
         logMessage.appendLine(prediction)
+        logMessage.appendLine("Optical Ranging Inference Time: ${rangingEndTime - rangingStartTime} ms")
+        logMessage.appendLine("Orientation Guidance Inference Time: ${orientationEndTime - orientationStartTime} ms")
 
         return prediction
     }
