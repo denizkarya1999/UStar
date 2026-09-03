@@ -16,6 +16,7 @@ object Denoising_CycleGAN {
     private const val IMG = 256 // model input size
 
     /** Load model once from assets */
+    @Synchronized
     fun load(context: Context, assetName: String = "UStar_Denoising_CycleGAN.ptl") {
         if (module == null) {
             val path = assetFilePath(context, assetName) // copy if needed
@@ -36,7 +37,8 @@ object Denoising_CycleGAN {
         )
 
         // forward pass
-        val outTensor = module!!.forward(IValue.from(tensor)).toTensor()
+        val model = checkNotNull(module) { "CycleGAN model has not been loaded" }
+        val outTensor = model.forward(IValue.from(tensor)).toTensor()
         val outArray = outTensor.dataAsFloatArray // NCHW output
 
         // convert output tensor → Bitmap

@@ -4,17 +4,17 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import org.opencv.android.OpenCVLoader
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.BitmapDrawable
-import android.hardware.camera2.CameraManager
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.preference.PreferenceManager
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.TextureView
@@ -27,21 +27,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.preference.PreferenceManager
 import com.developer27.ustar.camera.CameraHelper
 import com.developer27.ustar.databinding.ActivityMainBinding
-import com.developer27.ustar.machinelearning.Denoising_CycleGAN
-import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
-import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
-import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
+import com.developer27.ustar.videoprocessing.Settings
 import com.developer27.ustar.videoprocessing.VideoProcessor
 import java.text.SimpleDateFormat
+import java.io.File
 import java.util.Locale
 
 /**
  * MainActivity
  * ------------
  * Handles:
- *  - Runtime permissions (camera & mic)
+ *  - Runtime camera permission
  *  - Camera2 preview and frame display
  *  - Frame processing via [VideoProcessor]
  *
@@ -53,8 +52,6 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewBinding: ActivityMainBinding
-    private lateinit var sharedPreferences: SharedPreferences
-    private lateinit var cameraManager: CameraManager
     private lateinit var cameraHelper: CameraHelper
     private var videoProcessor: VideoProcessor? = null
 
@@ -62,28 +59,32 @@ class MainActivity : AppCompatActivity() {
     private var isRecording = false
     private var isProcessing = false
     private var isProcessingFrame = false
+    private var isCameraLifecycleActive = false
 
     // --- Global variable for prediction ---
     companion object {
+        @Volatile
         var currentPrediction: String = ""
     }
 
     // Camera permissions
     private val REQUIRED_PERMISSIONS = arrayOf(
-        Manifest.permission.CAMERA,
-        Manifest.permission.RECORD_AUDIO
+        Manifest.permission.CAMERA
     )
 
     private lateinit var requestPermissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var requestStoragePermissionLauncher: ActivityResultLauncher<String>
 
     private val textureListener = object : TextureView.SurfaceTextureListener {
         @SuppressLint("MissingPermission")
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {
-            if (allPermissionsGranted()) cameraHelper.openCamera()
-            else requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+            openCameraIfReady()
         }
         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, w: Int, h: Int) {}
-        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = false
+        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+            cameraHelper.closeCamera()
+            return true
+        }
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
             if (isProcessing) processFrameWithVideoProcessor()
         }
@@ -92,7 +93,6 @@ class MainActivity : AppCompatActivity() {
     /* ------------------------------------------------------------------ */
     /*  Lifecycle                                                         */
     /* ------------------------------------------------------------------ */
-    @SuppressLint("MissingPermission")
     override fun onCreate(savedInstanceState: Bundle?) {
         // Keep screen awake and portrait locked
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -104,11 +104,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(viewBinding.root)
 
         // Basic services
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
-        cameraManager = getSystemService(CAMERA_SERVICE) as CameraManager
         cameraHelper = CameraHelper(this, viewBinding)
         videoProcessor = VideoProcessor(this)
         viewBinding.processedFrameView.visibility = View.GONE
+
+        Settings.selectedDenoiser = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString("pref_denoiser_type", "cyclegan")
+            ?: "cyclegan"
 
         // Load OpenCV libraries
         if (OpenCVLoader.initDebug()) {
@@ -116,18 +118,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             Log.e("OpenCV", "OpenCV load failed")
         }
-
-        // Load the CycleGAN based denoising model on startup
-        Denoising_CycleGAN.load(this)
-
-        // Load DynaSpa Making Processor Model
-        MiniDynaSpaPreprocessor.load(this)
-
-        // Load the ResNet-18 based optical ranging model on startup
-        Optical_Ranging_ResNet18.loadModel(this)
-
-        // Load the ResNet-18 based orientation model on startup
-        Orientation_Guidance_ResNet18.loadModel(this)
 
         // Tap title to open website
         viewBinding.titleContainer.setOnClickListener {
@@ -138,35 +128,39 @@ class MainActivity : AppCompatActivity() {
         requestPermissionLauncher =
             registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
                 val cam = perms[Manifest.permission.CAMERA] ?: false
-                val mic = perms[Manifest.permission.RECORD_AUDIO] ?: false
-                if (cam && mic) {
-                    if (viewBinding.viewFinder.isAvailable) cameraHelper.openCamera()
-                    else viewBinding.viewFinder.surfaceTextureListener = textureListener
+                if (cam) {
+                    openCameraIfReady()
                 } else {
-                    Toast.makeText(this, "Camera & Audio permissions are required.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Camera permission is required.", Toast.LENGTH_SHORT).show()
                 }
             }
 
-        if (allPermissionsGranted()) {
-            if (viewBinding.viewFinder.isAvailable) cameraHelper.openCamera()
-            else viewBinding.viewFinder.surfaceTextureListener = textureListener
-        } else {
-            requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
-        }
+        requestStoragePermissionLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) saveCurrentFrameAndNotify()
+                else Toast.makeText(this, "Storage permission is required to save frames.", Toast.LENGTH_SHORT).show()
+            }
+
+        viewBinding.viewFinder.surfaceTextureListener = textureListener
 
         /* ---------------------- UI BUTTONS ---------------------- */
         // Start/Stop Processing
         viewBinding.startProcessingButton.setOnClickListener {
-            if (isRecording) stopProcessingAndRecording() else startProcessingAndRecording()
+            if (isRecording) stopProcessingAndRecording(launchAr = true)
+            else startProcessingAndRecording()
         }
 
         // Collect Dataset: save current frame (processed if available, else raw preview)
         viewBinding.collectDatasetButton.setOnClickListener {
-            val saved = saveCurrentFrame()
-            if (saved) {
-                Toast.makeText(this, "Frame saved to Pictures/UStar/Frames", Toast.LENGTH_SHORT).show()
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             } else {
-                Toast.makeText(this, "Could not save frame.", Toast.LENGTH_SHORT).show()
+                saveCurrentFrameAndNotify()
             }
         }
 
@@ -194,11 +188,12 @@ class MainActivity : AppCompatActivity() {
     /* ------------------------------------------------------------------ */
     override fun onResume() {
         super.onResume()
+        isCameraLifecycleActive = true
         cameraHelper.startBackgroundThread()
-        if (viewBinding.viewFinder.isAvailable && allPermissionsGranted()) {
-            cameraHelper.openCamera()
+        if (allPermissionsGranted()) {
+            openCameraIfReady()
         } else {
-            viewBinding.viewFinder.surfaceTextureListener = textureListener
+            requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
         }
     }
 
@@ -206,11 +201,18 @@ class MainActivity : AppCompatActivity() {
     /*  Pause Mechanisms                                                  */
     /* ------------------------------------------------------------------ */
     override fun onPause() {
+        isCameraLifecycleActive = false
         isProcessing = false
-        if (isRecording) stopProcessingAndRecording()
+        if (isRecording) stopProcessingAndRecording(launchAr = false)
         cameraHelper.closeCamera()
         cameraHelper.stopBackgroundThread()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        videoProcessor?.close()
+        videoProcessor = null
+        super.onDestroy()
     }
 
     /* ------------------------------------------------------------------ */
@@ -219,11 +221,28 @@ class MainActivity : AppCompatActivity() {
     private var isFrontCamera = false
 
     private fun switchCamera() {
-        if (isRecording) stopProcessingAndRecording()
+        if (!allPermissionsGranted()) {
+            requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+            return
+        }
+        if (isRecording) stopProcessingAndRecording(launchAr = false)
         isFrontCamera = !isFrontCamera
         cameraHelper.isFrontCamera = isFrontCamera
         cameraHelper.closeCamera()
-        cameraHelper.openCamera()
+        openCameraIfReady()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun openCameraIfReady() {
+        if (!isCameraLifecycleActive || !allPermissionsGranted() || !viewBinding.viewFinder.isAvailable) {
+            return
+        }
+
+        try {
+            cameraHelper.openCamera()
+        } catch (e: SecurityException) {
+            Log.e("MainActivity", "Camera permission was revoked while opening the camera", e)
+        }
     }
 
     private fun allPermissionsGranted() =
@@ -253,7 +272,7 @@ class MainActivity : AppCompatActivity() {
     /* ------------------------------------------------------------------ */
     /*  Stop Processing                                                   */
     /* ------------------------------------------------------------------ */
-    private fun stopProcessingAndRecording(){
+    private fun stopProcessingAndRecording(launchAr: Boolean) {
         isRecording = false
         isProcessing = false
 
@@ -269,7 +288,9 @@ class MainActivity : AppCompatActivity() {
         // Hide Collect Dataset when processing stops
         viewBinding.collectDatasetButton.visibility = View.GONE
 
-        // Trigger the AR viewer
+        if (!launchAr) return
+
+        // Trigger the AR viewer only when the user explicitly stops tracking.
         try {
             val intent = Intent(
                 this,
@@ -312,6 +333,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     //  Save Current Frame when processing
+    private fun saveCurrentFrameAndNotify() {
+        val saved = saveCurrentFrame()
+        val message = if (saved) {
+            "Frame saved to Pictures/UStar/Frames"
+        } else {
+            "Could not save frame."
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    @Suppress("DEPRECATION")
     private fun saveCurrentFrame(): Boolean {
         // Prefer the processed bitmap shown in processedFrameView
         val processedDrawable = viewBinding.processedFrameView.drawable
@@ -329,24 +361,42 @@ class MainActivity : AppCompatActivity() {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(System.currentTimeMillis())
             val fileName = "UStar_${timestamp}.png"
 
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/UStar/Frames")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/UStar/Frames")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+
+                val resolver = contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return false
+                val written = resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                } == true
+                if (!written) {
+                    resolver.delete(uri, null, null)
+                    return false
+                }
+
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } else {
+                val pictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val destination = File(pictures, "UStar/Frames/$fileName")
+                destination.parentFile?.mkdirs()
+                destination.outputStream().use { out ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) return false
+                }
+                MediaScannerConnection.scanFile(
+                    this,
+                    arrayOf(destination.absolutePath),
+                    arrayOf("image/png"),
+                    null
+                )
             }
-
-            val resolver = contentResolver
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                ?: return false
-
-            resolver.openOutputStream(uri)?.use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
 
             true
         } catch (e: Exception) {

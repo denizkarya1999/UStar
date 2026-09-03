@@ -21,17 +21,25 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
         // ImageNet normalization (must match training)
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
+        @Volatile
+        private var cachedModel: Optical_Ranging_ResNet18? = null
+        private var cachedAssetName: String? = null
 
         /** Load the TorchScript model (.pt) from assets */
+        @Synchronized
         fun loadModel(
             context: Context,
             assetName: String = "UStar_Optical_Ranging_ResNet_18_Simulated_Images_Ahmad.pt"
         ): Optical_Ranging_ResNet18? {
+            if (cachedAssetName == assetName) cachedModel?.let { return it }
             return try {
                 val filePath = assetFilePath(context, assetName)
                 val module = Module.load(filePath)
                 Log.i("Optical_Ranging_ResNet18", "✅ Model loaded successfully from $assetName")
-                Optical_Ranging_ResNet18(module)
+                Optical_Ranging_ResNet18(module).also {
+                    cachedModel = it
+                    cachedAssetName = assetName
+                }
             } catch (e: Exception) {
                 Log.e("Optical_Ranging_ResNet18", "❌ Failed to load model: ${e.message}", e)
                 null
@@ -167,6 +175,7 @@ class Optical_Ranging_ResNet18 private constructor(private val module: Module) {
 
         // step 4: extract raw logits
         val logits = outputTensor.dataAsFloatArray
+        require(logits.isNotEmpty()) { "Optical ranging model returned no predictions" }
 
         // step 5: convert logits → probabilities
         val probs = softmax(logits)

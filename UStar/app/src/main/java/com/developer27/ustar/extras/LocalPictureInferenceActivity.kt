@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -19,13 +18,10 @@ import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.Denoising_CycleGAN
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
 import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
+import com.developer27.ustar.storage.PredictionLogWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileWriter
-import java.text.SimpleDateFormat
-import java.util.*
 import kotlin.random.Random
 
 /**
@@ -95,37 +91,42 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
                 return@registerForActivityResult
             }
 
-            var loadedCount = 0
-            for (uri in uris) {
-                val bmp = loadBitmapFromUri(uri)
-                if (bmp != null) {
-                    selectedBitmaps.add(bmp)
-                    loadedCount++
+            progressBar.visibility = View.VISIBLE
+            btnSelectImage.isEnabled = false
+            btnRunInference.isEnabled = false
+
+            lifecycleScope.launch {
+                val loaded = withContext(Dispatchers.IO) {
+                    uris.mapNotNull(::loadBitmapFromUri)
                 }
-            }
+                selectedBitmaps.addAll(loaded)
 
-            if (selectedBitmaps.isEmpty()) {
-                Toast.makeText(this, "Failed to load selected images.", Toast.LENGTH_SHORT).show()
-                imageOriginal.setImageDrawable(null)
+                progressBar.visibility = View.GONE
+                btnSelectImage.isEnabled = true
+
+                if (selectedBitmaps.isEmpty()) {
+                    Toast.makeText(
+                        this@LocalPictureInferenceActivity,
+                        "Failed to load selected images.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    imageOriginal.setImageDrawable(null)
+                    imageDenoised.setImageDrawable(null)
+                    return@launch
+                }
+
+                imageOriginal.setImageBitmap(selectedBitmaps.first())
                 imageDenoised.setImageDrawable(null)
-                btnRunInference.isEnabled = false
-                return@registerForActivityResult
+                textOpticalResult.text = "Optical Ranging Model —"
+                textOrientationResult.text = "Orientation Guidance Model —"
+                btnRunInference.isEnabled = true
+
+                Toast.makeText(
+                    this@LocalPictureInferenceActivity,
+                    "Loaded ${loaded.size} image(s).",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-
-            // Show the first selected image as a quick preview
-            imageOriginal.setImageBitmap(selectedBitmaps.first())
-            imageDenoised.setImageDrawable(null)
-
-            textOpticalResult.text = "Optical Ranging Model —"
-            textOrientationResult.text = "Orientation Guidance Model —"
-
-            btnRunInference.isEnabled = true
-
-            Toast.makeText(
-                this,
-                "Loaded $loadedCount image(s).",
-                Toast.LENGTH_SHORT
-            ).show()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -443,11 +444,25 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
      */
     private fun loadBitmapFromUri(uri: Uri): Bitmap? {
         return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             contentResolver.openInputStream(uri)?.use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > MAX_IMAGE_DIMENSION ||
+                bounds.outHeight / sampleSize > MAX_IMAGE_DIMENSION
+            ) {
+                sampleSize *= 2
+            }
+
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, options)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("LocalPictureInference", "Unable to decode selected image", e)
             null
         }
     }
@@ -460,28 +475,10 @@ class LocalPictureInferenceActivity : AppCompatActivity() {
      * or adjust this path.
      */
     private fun writeLogToFile() {
-        try {
-            val documentsDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            if (!documentsDir.exists()) documentsDir.mkdirs()
+        PredictionLogWriter.write(this, logMessage)
+    }
 
-            val logFile = File(documentsDir, "UStar_Cube_Prediction.txt")
-
-            val timestamp =
-                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-            val fullLog = StringBuilder()
-                .appendLine("UStar UIOD Tag Features")
-                .appendLine("Prediction Date: $timestamp")
-                .append(logMessage.toString())
-
-            FileWriter(logFile, false).use { writer ->
-                writer.write(fullLog.toString())
-            }
-
-            Log.i("UStarLogger", "LocalInference file overwritten with:\n$fullLog")
-        } catch (e: Exception) {
-            Log.e("UStarLogger", "Error writing log file (LocalInference): ${e.message}")
-        }
+    private companion object {
+        const val MAX_IMAGE_DIMENSION = 2048
     }
 }

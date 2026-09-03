@@ -86,7 +86,7 @@
             android:id="@+id/textViewVersion"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Version: 1.0"
+            android:text="Version: 1.0.1"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 
@@ -94,7 +94,7 @@
             android:id="@+id/textViewReleaseDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Release Date: December 20th 2025"
+            android:text="Release Date: September 3rd 2026"
             android:textColor="@color/darkBlue"
             android:layout_marginTop="8dp" />
 

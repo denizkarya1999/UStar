@@ -21,17 +21,25 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
         // ImageNet normalization (must match training)
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD  = floatArrayOf(0.229f, 0.224f, 0.225f)
+        @Volatile
+        private var cachedModel: Orientation_Guidance_ResNet18? = null
+        private var cachedAssetName: String? = null
 
         /** Load TorchScript model from assets */
+        @Synchronized
         fun loadModel(
             context: Context,
             assetName: String = "UStar_Orientation_Guidance_ResNet_18_Simulated_Images_Ahmad.pt"
         ): Orientation_Guidance_ResNet18? {
+            if (cachedAssetName == assetName) cachedModel?.let { return it }
             return try {
                 val filePath = assetFilePath(context, assetName) // copy if needed
                 val module = Module.load(filePath)               // load .pt model
                 Log.i("Orientation_Guidance_ResNet18", "✅ Model loaded successfully from $assetName")
-                Orientation_Guidance_ResNet18(module)
+                Orientation_Guidance_ResNet18(module).also {
+                    cachedModel = it
+                    cachedAssetName = assetName
+                }
             } catch (e: Exception) {
                 Log.e("Orientation_Guidance_ResNet18", "❌ Failed to load model: ${e.message}", e)
                 null
@@ -146,6 +154,7 @@ class Orientation_Guidance_ResNet18 private constructor(private val module: Modu
 
         // step 4: extract raw logits
         val logits = outputTensor.dataAsFloatArray
+        require(logits.isNotEmpty()) { "Orientation model returned no predictions" }
 
         // step 5: convert logits → probabilities
         val probs = softmax(logits)

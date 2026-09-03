@@ -70,10 +70,4 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
     }
-
-    override fun onBackPressed() {
-        super.onBackPressed()
-        setResult(RESULT_OK, Intent())
-        finish()
-    }
 }

@@ -38,6 +38,7 @@ object MiniDynaSpaPreprocessor {
     private val normMean = floatArrayOf(0.485f, 0.456f, 0.406f)
     private val normStd = floatArrayOf(0.229f, 0.224f, 0.225f)
 
+    @Synchronized
     fun load(context: Context, assetName: String = MODEL_NAME) {
         if (module == null) {
             val path = assetFilePath(context, assetName)

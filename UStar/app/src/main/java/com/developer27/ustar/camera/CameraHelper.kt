@@ -21,8 +21,7 @@ import androidx.annotation.RequiresPermission
 import com.developer27.ustar.MainActivity
 import com.developer27.ustar.databinding.ActivityMainBinding
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -76,6 +75,7 @@ public class CameraHelper(
     /** Chosen sizes for preview and (potential) video. */
     public var previewSize: Size? = null
     public var videoSize: Size? = null
+    public var photoSize: Size? = null
 
     /** Full active sensor area; used to compute SCALER_CROP_REGION for zoom. */
     public var sensorArraySize: Rect? = null
@@ -87,11 +87,15 @@ public class CameraHelper(
     /** Current zoom factor (1.0 = no zoom). Adjusted by UI. */
     public var zoomLevel: Float = 1.0f
 
-    /** Hard cap for zoomLevel to avoid absurd crop windows. */
-    public val maxZoom: Float = 10.0f
+    /** Camera-supported cap for zoomLevel. */
+    public var maxZoom: Float = 1.0f
+        private set
 
     /** Which lens is active; toggled from UI. */
     public var isFrontCamera: Boolean = false
+
+    @Volatile
+    private var cameraRequested: Boolean = false
 
     // ------------------------------------------------------------------------
     // Companion (public)
@@ -121,17 +125,25 @@ public class CameraHelper(
      */
     public val stateCallback: CameraDevice.StateCallback = object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
+            if (!cameraRequested) {
+                camera.close()
+                return
+            }
             cameraDevice = camera
             createCameraPreview()
         }
         override fun onDisconnected(camera: CameraDevice) {
+            cameraRequested = false
             camera.close()
             cameraDevice = null
         }
         override fun onError(camera: CameraDevice, error: Int) {
+            cameraRequested = false
             camera.close()
             cameraDevice = null
-            activity.finish()
+            activity.runOnUiThread {
+                Toast.makeText(activity, "Unable to open camera (error $error).", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -141,6 +153,7 @@ public class CameraHelper(
 
     /** Start a dedicated background thread/handler to receive Camera2 callbacks and do disk I/O. */
     public fun startBackgroundThread() {
+        if (backgroundThread?.isAlive == true) return
         backgroundThread = HandlerThread("CameraBackground").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
     }
@@ -164,25 +177,41 @@ public class CameraHelper(
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.CAMERA)
     public fun openCamera() {
+        if (cameraDevice != null || cameraRequested) return
+        val callbackHandler = backgroundHandler ?: return
         val cameraId = getCameraId()
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
         sensorArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+        maxZoom = (characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)
+            ?: 1.0f).coerceAtLeast(1.0f)
+        zoomLevel = zoomLevel.coerceIn(1.0f, maxZoom)
 
         // Pick sizes for preview and potential video streams
         val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return
         previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture::class.java))
         videoSize   = chooseOptimalSize(map.getOutputSizes(MediaRecorder::class.java))
+        photoSize = chooseOptimalSize(map.getOutputSizes(ImageFormat.JPEG))
 
         // Asynchronous open; result delivered to [stateCallback]
-        cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
+        cameraRequested = true
+        try {
+            cameraManager.openCamera(cameraId, stateCallback, callbackHandler)
+        } catch (e: Exception) {
+            cameraRequested = false
+            throw e
+        }
     }
 
     /** Close session + device; safe to call from lifecycle callbacks. */
     public fun closeCamera() {
+        cameraRequested = false
         cameraCaptureSession?.close()
         cameraCaptureSession = null
         cameraDevice?.close()
         cameraDevice = null
+        imageReader?.close()
+        imageReader = null
+        captureRequestBuilder = null
     }
 
     // ------------------------------------------------------------------------
@@ -201,20 +230,22 @@ public class CameraHelper(
         val device = cameraDevice ?: return
         val texture = viewBinding.viewFinder.surfaceTexture ?: return
         val size = previewSize ?: return
+        val stillSize = photoSize ?: size
 
         // Back the TextureView with a buffer of the chosen preview size
         texture.setDefaultBufferSize(size.width, size.height)
         val previewSurface = Surface(texture)
 
         // Persistent JPEG reader (maxImages=2 allows one queued image while saving)
-        imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
+        imageReader?.close()
+        imageReader = ImageReader.newInstance(stillSize.width, stillSize.height, ImageFormat.JPEG, 2)
         val readerSurface = imageReader!!.surface
 
         // Build a PREVIEW request and set default controls
         captureRequestBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(previewSurface)
-            applyRollingShutter15Hz() // AE target fps; manual exposure is handled in still capture
-            applyZoom()               // apply current zoom crop region
+            applyRollingShutter15Hz(this) // AE target fps; manual exposure is handled in still capture
+            applyZoom(this)               // apply current zoom crop region
             set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
             set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_HIGH_QUALITY)
         }
@@ -228,7 +259,9 @@ public class CameraHelper(
                     updatePreview()
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) {
-                    Toast.makeText(activity, "Preview config failed.", Toast.LENGTH_SHORT).show()
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "Preview config failed.", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             backgroundHandler
@@ -241,7 +274,11 @@ public class CameraHelper(
         val builder = captureRequestBuilder ?: return
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
         builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_HIGH_QUALITY)
-        session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+        try {
+            session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+        } catch (e: Exception) {
+            android.util.Log.e("CameraHelper", "Unable to start camera preview", e)
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -279,8 +316,8 @@ public class CameraHelper(
                     val ratio = 1 / zoomLevel
                     val w = (rect.width() * ratio).toInt()
                     val h = (rect.height() * ratio).toInt()
-                    val l = (rect.width() - w) / 2
-                    val t = (rect.height() - h) / 2
+                    val l = rect.left + (rect.width() - w) / 2
+                    val t = rect.top + (rect.height() - h) / 2
                     set(CaptureRequest.SCALER_CROP_REGION, Rect(l, t, l + w, t + h))
                 }
             }
@@ -290,7 +327,9 @@ public class CameraHelper(
             val caps  = chara.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             val manual = caps?.contains(
                 CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
-            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(15, 15))
+            chooseTargetFpsRange(chara)?.let {
+                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it)
+            }
             if (manual) {
                 val expRange = chara.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
                 val isoRange = chara.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
@@ -387,16 +426,35 @@ public class CameraHelper(
      * (Manual exposure for preview is not forced here; we only enforce manual in still capture.)
      */
     public fun applyRollingShutter15Hz() {
-        captureRequestBuilder?.let { builder ->
-            val chara = cameraManager.getCameraCharacteristics(getCameraId())
-            val caps  = chara.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-            val manual = caps?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(15, 15))
-            if (!manual) {
-                builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-                builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-            }
+        captureRequestBuilder?.let { builder -> applyRollingShutter15Hz(builder) }
+    }
+
+    private fun applyRollingShutter15Hz(builder: CaptureRequest.Builder) {
+        val chara = cameraManager.getCameraCharacteristics(getCameraId())
+        val caps = chara.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+        val manual = caps?.contains(
+            CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR
+        ) == true
+        chooseTargetFpsRange(chara)?.let {
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it)
         }
+        if (!manual) {
+            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+        }
+    }
+
+    private fun chooseTargetFpsRange(characteristics: CameraCharacteristics): Range<Int>? {
+        val ranges = characteristics.get(
+            CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
+        ) ?: return null
+        return ranges.minWithOrNull(
+            compareBy<Range<Int>>(
+                { if (it.lower <= 15 && it.upper >= 15) 0 else 1 },
+                { abs(it.lower - 15) + abs(it.upper - 15) },
+                { it.upper - it.lower }
+            )
+        )
     }
 
     // ------------------------------------------------------------------------
@@ -413,7 +471,7 @@ public class CameraHelper(
         var zoomInRun : Runnable? = null
         var zoomOutRun: Runnable? = null
 
-        viewBinding.zoomInButton.setOnTouchListener { _, e ->
+        viewBinding.zoomInButton.setOnTouchListener { view, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     zoomInRun = object : Runnable {
@@ -427,14 +485,15 @@ public class CameraHelper(
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(zoomInRun!!)
+                    zoomInRun?.let(handler::removeCallbacks)
+                    if (e.action == MotionEvent.ACTION_UP) view.performClick()
                     true
                 }
                 else -> false
             }
         }
 
-        viewBinding.zoomOutButton.setOnTouchListener { _, e ->
+        viewBinding.zoomOutButton.setOnTouchListener { view, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     zoomOutRun = object : Runnable {
@@ -448,7 +507,8 @@ public class CameraHelper(
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(zoomOutRun!!)
+                    zoomOutRun?.let(handler::removeCallbacks)
+                    if (e.action == MotionEvent.ACTION_UP) view.performClick()
                     true
                 }
                 else -> false
@@ -462,14 +522,23 @@ public class CameraHelper(
      */
     public fun applyZoom() {
         val builder = captureRequestBuilder ?: return
+        applyZoom(builder)
+        try {
+            cameraCaptureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
+        } catch (e: Exception) {
+            android.util.Log.e("CameraHelper", "Unable to apply camera zoom", e)
+        }
+    }
+
+    private fun applyZoom(builder: CaptureRequest.Builder) {
         val rect    = sensorArraySize ?: return
+        zoomLevel = zoomLevel.coerceIn(1.0f, maxZoom)
         val ratio = 1 / zoomLevel
         val w = (rect.width() * ratio).toInt()
         val h = (rect.height() * ratio).toInt()
-        val l = (rect.width() - w) / 2
-        val t = (rect.height() - h) / 2
+        val l = rect.left + (rect.width() - w) / 2
+        val t = rect.top + (rect.height() - h) / 2
         builder.set(CaptureRequest.SCALER_CROP_REGION, Rect(l, t, l + w, t + h))
-        cameraCaptureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
     }
 
     // ------------------------------------------------------------------------
@@ -496,9 +565,11 @@ public class CameraHelper(
      * (You can change this policy to pick the largest under a cap, or aspect-ratio closest to your UI view.)
      */
     public fun chooseOptimalSize(choices: Array<Size>): Size {
+        require(choices.isNotEmpty()) { "Camera reported no supported output sizes" }
         val targetW = 1280
         val targetH = 720
         choices.find { it.width == targetW && it.height == targetH }?.let { return it }
-        return choices.minByOrNull { it.width * it.height } ?: choices[0]
+        return choices.minByOrNull { abs(it.width - targetW) + abs(it.height - targetH) }
+            ?: choices[0]
     }
 }

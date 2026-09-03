@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -17,10 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.developer27.ustar.R
 import com.developer27.ustar.machinelearning.DynaSpa.DynaSpaMaskProcessor
 import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
-import java.io.File
-import java.io.FileWriter
-import java.text.SimpleDateFormat
-import java.util.Date
+import com.developer27.ustar.storage.PredictionLogWriter
 import java.util.Locale
 
 class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
@@ -72,9 +68,6 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
         selectButton = findViewById(R.id.btnSelectImage)
         runButton = findViewById(R.id.btnRunInference)
         progressBar = findViewById(R.id.inferenceProgress)
-
-        // Load model once
-        MiniDynaSpaPreprocessor.load(this)
 
         selectButton.setOnClickListener {
             pickImageLauncher.launch("image/*")
@@ -137,6 +130,15 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
                                 featureMapTensor = result.featureMap
                             )
 
+                        val probs = result.probabilities
+                        val prob0 = if (probs.isNotEmpty()) probs[0] else 0f
+                        val prob1 = if (probs.size > 1) probs[1] else 0f
+                        val predictionText =
+                            "No UOID tag: ${String.format(Locale.getDefault(), "%.3f", prob0)}\n" +
+                                "UOID tag present: ${String.format(Locale.getDefault(), "%.3f", prob1)}"
+                        logMessage.appendLine(predictionText.replace("\n", " | "))
+                        writeLogToFile()
+
                         runOnUiThread {
                             // Restore UI
                             progressBar.visibility = View.GONE
@@ -154,17 +156,7 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
 
                             imageDynaSpa.setImageBitmap(dynaSpaProcessedBitmap)
 
-                            // Show both class probabilities
-                            val probs = result.probabilities
-                            val prob0 = if (probs.size > 0) probs[0] else 0f
-                            val prob1 = if (probs.size > 1) probs[1] else 0f
-
-                            val predictionText = "No UOID tag: ${String.format("%.3f", prob0)}\n" +
-                                    "UOID tag present: ${String.format("%.3f", prob1)}"
                             predictionLabel.text = predictionText
-                            
-                            logMessage.appendLine(predictionText.replace("\n", " | "))
-                            writeLogToFile()
                         }
                     } else {
                         runOnUiThread {
@@ -191,37 +183,35 @@ class LocalPhotoInferenceDynaSpaActivity : AppCompatActivity() {
     // Convert URI to bitmap
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             contentResolver.openInputStream(uri)?.use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > MAX_IMAGE_DIMENSION ||
+                bounds.outHeight / sampleSize > MAX_IMAGE_DIMENSION
+            ) {
+                sampleSize *= 2
+            }
+
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, options)
             }
         } catch (e: Exception) {
+            Log.e("LocalDynaSpa", "Unable to decode selected image", e)
             null
         }
     }
 
     /** Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt */
     private fun writeLogToFile() {
-        try {
-            val documentsDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            if (!documentsDir.exists()) documentsDir.mkdirs()
+        PredictionLogWriter.write(this, logMessage)
+    }
 
-            val logFile = File(documentsDir, "UStar_Cube_Prediction.txt")
-
-            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-            val fullLog = StringBuilder()
-                .appendLine("UStar UIOD Tag Features")
-                .appendLine("Prediction Date: $timestamp")
-                .append(logMessage.toString())
-
-            FileWriter(logFile, false).use { writer ->
-                writer.write(fullLog.toString())
-            }
-
-            Log.i("UStarLogger", "DynaSpa file overwritten with:\n$fullLog")
-        } catch (e: Exception) {
-            Log.e("UStarLogger", "Error writing log file (DynaSpa): ${e.message}")
-        }
+    private companion object {
+        const val MAX_IMAGE_DIMENSION = 2048
     }
 }

@@ -4,21 +4,19 @@ package com.developer27.ustar.videoprocessing
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
 import android.util.Log
 import android.widget.Toast
 import com.developer27.ustar.MainActivity.Companion.currentPrediction
 import com.developer27.ustar.machinelearning.DynaSpa.MiniDynaSpaPreprocessor
 import com.developer27.ustar.machinelearning.Orientation_Guidance_ResNet18
 import com.developer27.ustar.machinelearning.Optical_Ranging_ResNet18
+import com.developer27.ustar.storage.PredictionLogWriter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileWriter
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /* -----------------------------  Settings  ----------------------------- */
@@ -27,13 +25,13 @@ object Settings {
 }
 
 /** VideoProcessor */
-class VideoProcessor(private val context: Context) {
+class VideoProcessor(context: Context) {
+
+    private val context = context.applicationContext
+    private val processorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // Global variable to hold the processed bitmap
     private var processedBitmap: Bitmap? = null
-
-    // Global variable to store second preprocessed image for Orientation Guidance and Optical Ranging Models
-    private var secondPreprocessedImage: Bitmap? = null
 
     // Global variable for combined log message
     private var logMessage: StringBuilder = StringBuilder()
@@ -43,24 +41,28 @@ class VideoProcessor(private val context: Context) {
 
     /** Process a single frame asynchronously. */
     fun processFrame(bitmap: Bitmap, callback: (Bitmap?) -> Unit) {
-        CoroutineScope(Dispatchers.Default).launch {
+        processorScope.launch {
             val result = try {
                 processFrameInternal(bitmap)
             } catch (e: Exception) {
-                Log.d("VideoProcessor", "Error processing frame: ${e.message}", e)
+                Log.e("VideoProcessor", "Error processing frame", e)
                 null
             }
             withContext(Dispatchers.Main) { callback(result) }
         }
     }
 
+    fun close() {
+        processorScope.cancel()
+    }
+
     /** Process the frame with deep learning models */
-    private suspend fun processFrameInternal(src: Bitmap): Bitmap = withContext(Dispatchers.IO) {
+    private fun processFrameInternal(src: Bitmap): Bitmap {
         // 1. Reset the logMessage variable for logging
         logMessage = StringBuilder()
 
         // 2. Run the selected denoising model first
-        val denoisedResult = when (Settings.selectedDenoiser.lowercase()) {
+        val denoisedResult = when (Settings.selectedDenoiser.lowercase(Locale.ROOT)) {
             "dynaspa" -> runDynaSpaDenoisingInference(src)
             else -> runCycleGANDenoisingInference(src)
         }
@@ -72,7 +74,7 @@ class VideoProcessor(private val context: Context) {
         writeLogToFile()
 
         // 5. Return processed bitmap
-        denoisedResult
+        return denoisedResult
     }
 
     /** Run tag detection model and return its DynaSpa masked result as a Bitmap */
@@ -104,11 +106,7 @@ class VideoProcessor(private val context: Context) {
                 input
             }
         } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Tag detection DynaSpa masking failed: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
+            Log.e("VideoProcessor", "Tag detection DynaSpa masking failed", e)
             input
         }
         val endTime = System.currentTimeMillis()
@@ -120,13 +118,10 @@ class VideoProcessor(private val context: Context) {
     private fun runCycleGANDenoisingInference(input: Bitmap): Bitmap {
         val startTime = System.currentTimeMillis()
         val resultBitmap = try {
+            com.developer27.ustar.machinelearning.Denoising_CycleGAN.load(context)
             com.developer27.ustar.machinelearning.Denoising_CycleGAN.run(input)
         } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "CycleGAN based denoising failed: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
+            Log.e("VideoProcessor", "CycleGAN based denoising failed", e)
             input
         }
         val endTime = System.currentTimeMillis()
@@ -169,29 +164,6 @@ class VideoProcessor(private val context: Context) {
 
     /** Writes the full log with date and header to Documents/UStar_Cube_Prediction.txt */
     private fun writeLogToFile() {
-        try {
-            val documentsDir =
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            if (!documentsDir.exists()) documentsDir.mkdirs()
-
-            val logFile = File(documentsDir, "UStar_Cube_Prediction.txt")
-
-            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-            // Build the final output
-            val fullLog = StringBuilder()
-                .appendLine("UStar UIOD Tag Features")
-                .appendLine("Prediction Date: $timestamp")
-                .append(logMessage.toString())
-
-            // Overwrite the file
-            FileWriter(logFile, false).use { writer ->
-                writer.write(fullLog.toString())
-            }
-
-            Log.i("UStarLogger", "File overwritten with:\n$fullLog")
-        } catch (e: Exception) {
-            Log.e("UStarLogger", "Error writing log file: ${e.message}")
-        }
+        PredictionLogWriter.write(context, logMessage)
     }
 }
